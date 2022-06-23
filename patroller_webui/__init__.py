@@ -51,19 +51,29 @@ def run():
     for server_cfg in gpu_servers:
         server_name = server_cfg['name']
         server_url = server_cfg['url']
+        
+        try:
+            request = urllib.request.Request(server_url)
+            
+            if 'http_auth_user' in server_cfg and 'http_auth_pass' in server_cfg:
+                url_auth = base64.b64encode(('%s:%s' % (server_cfg['http_auth_user'],
+                                                         server_cfg['http_auth_pass'])).encode('ascii'))
 
-        request = urllib.request.Request(server_url)
+            if url_auth is not None and not server_cfg.get('disable_auth'):
+                request.add_header("Authorization", "Basic %s" % url_auth.decode("ascii"))
 
-        if 'http_auth_user' in server_cfg and 'http_auth_pass' in server_cfg:
-            url_auth = base64.b64encode(('%s:%s' % (server_cfg['http_auth_user'],
-                                                     server_cfg['http_auth_pass'])).encode('ascii'))
-
-        if url_auth is not None and not server_cfg.get('disable_auth'):
-            request.add_header("Authorization", "Basic %s" % url_auth.decode("ascii"))
-
-        with urllib.request.urlopen(request) as url:
-            gpu_data = json.loads(url.read().decode())
-
+            with urllib.request.urlopen(request, timeout=5) as url:
+                gpu_data = json.loads(url.read().decode())
+        
+        except Exception as ex:
+            import traceback
+            print("Unable to retrieve status from '%s'" % server_url)
+            traceback.print_exception(type(ex), ex, ex.__traceback__)
+            
+            with st.expander(server_name,expanded=True):
+                st.error("Unable to retrieve status from '%s'" % server_url)
+                
+            continue
 
         with st.expander(server_name,expanded=True):
             cols_title = st.columns(len(gpu_data))

@@ -109,7 +109,7 @@ def run():
                     claim_age = time.strftime('%Mm %Ssec', time.gmtime(gpu_info['claim']['age']))
                     
                     if gpu_info['claim']['age'] > 60*60:
-                        claim_age = '%dH %s' % (int(gpu_info['claim']['age']/(60*60)), claim_age)
+                        claim_age = '%dh %s' % (int(gpu_info['claim']['age']/(60*60)), claim_age)
                         
                     if "user" in gpu_info['claim']:
                         st.write("❌ OCCUPIED: <a href=\"mailto:{0}\">{0}</a>".format(gpu_info['claim']['user']),

@@ -51,7 +51,7 @@ def chronicle_patroller():
 
         
         # Save results using fastparquet 
-        occupancy_df.to_parquet(__DEFAULT_DATABASE_PATH, index=True, engine='fastparquet', append=os.path.exists(__DEFAULT_DATABASE_PATH))
+        occupancy_df.to_parquet(__DEFAULT_DATABASE_PATH, index=True, engine='fastparquet', append=os.path.exists(__DEFAULT_DATABASE_PATH) and os.path.getsize(__DEFAULT_DATABASE_PATH) > 0)
         
         # Sleep for 1 minute before monitoring again        
         time.sleep(60)

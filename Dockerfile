@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:24.04
 LABEL maintainer "Domen Tabernik <domen.tabernik@fri.uni-lj.si>"
 
 RUN apt-get update --fix-missing && \
@@ -14,8 +14,8 @@ ADD setup.py /code/
 ADD README.md /code/
 ADD requirements.txt /code/
 
-RUN pip3 install -r /code/requirements.txt
-RUN pip3 install /code/.
+RUN pip3 install -r /code/requirements.txt --break-system-packages
+RUN pip3 install /code/. --break-system-packages
 
 RUN chmod +x /code/main.sh
 

@@ -21,7 +21,7 @@ def run_statistics():
                 index += 1
 
         # load history data
-        df = pd.read_parquet(__DEFAULT_DATABASE_PATH)   
+        df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
         df.index = pd.to_datetime(df.index, unit='s')
 
     # add timestamp_gpu so that we can count unique instance per each (timestamp,gpu) instance

@@ -2,7 +2,7 @@ import os, json
 import urllib.request, base64
 
 __DEFAULT_CONFIG_PATH = "/etc/patroller/web-ui.json"
-__DEFAULT_DATABASE_PATH = "occupancy_data.parquet"
+__DEFAULT_DATABASE_PATH = "/code/occupancy_data.parquet"
 
 def _load_config( cfg_path):
     if os.path.exists(cfg_path):

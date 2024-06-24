@@ -8,17 +8,12 @@ from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE
 def run_history_heatmap():
 
     pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
-
+    
     with st.form('filtering-form'):
         server_names = [s['name'] for s in pattroler.cfg['servers']]
         selected_servers = st.multiselect("Servers", server_names, server_names)
 
         st.form_submit_button('Apply filter')
-
-    cell_info = st.container()
-    def on_occupancy_block_select(events):
-
-        cell_info.write(events.selection)
 
     with st.spinner('Retrieving server gpus and history'):
         # retrieve all server GPUs
@@ -33,7 +28,7 @@ def run_history_heatmap():
                 index += 1
         
         # load history data
-        df = pd.read_parquet(__DEFAULT_DATABASE_PATH)   
+        df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
         df.index = pd.to_datetime(df.index, unit='s')
 
         times = df.index.unique().to_list()
@@ -67,7 +62,7 @@ def run_history_dashboard():
     server_gpus = {server_cfg['name']: [gpu_id for gpu_id,_ in server_cfg['data'].items()] for server_cfg in pattroler}
     
     # load history data
-    df = pd.read_parquet(__DEFAULT_DATABASE_PATH)   
+    df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
     df.index = pd.to_datetime(df.index, unit='s')
 
     times = df.index.unique().to_list()

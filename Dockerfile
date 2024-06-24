@@ -21,5 +21,4 @@ RUN chmod +x /code/main.sh
 
 EXPOSE 80
 
-#ENTRYPOINT ["streamlit", "run", "/code/patroller_webui/main.py" ]
 ENTRYPOINT [ "/code/main.sh" ]

@@ -5,7 +5,8 @@ A web display console for all the data colelted by patrollers.
 ## Dependency
 
 ```bash
-streamlit==1.1.0
+streamlit==1.36.0
+fastparquet 
 ```
 
 ## Usage

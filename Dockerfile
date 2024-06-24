@@ -9,6 +9,7 @@ RUN apt-get update --fix-missing && \
 ENV PYTHONPATH=/code
 
 ADD patroller_webui /code/patroller_webui
+ADD main.sh /code/
 ADD setup.py /code/
 ADD README.md /code/
 ADD requirements.txt /code/
@@ -16,6 +17,9 @@ ADD requirements.txt /code/
 RUN pip3 install -r /code/requirements.txt
 RUN pip3 install /code/.
 
+RUN chmod +x /code/main.sh
+
 EXPOSE 80
 
-ENTRYPOINT ["streamlit", "run", "/code/patroller_webui/main.py" ]
+#ENTRYPOINT ["streamlit", "run", "/code/patroller_webui/main.py" ]
+ENTRYPOINT [ "/code/main.sh" ]

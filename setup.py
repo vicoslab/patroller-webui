@@ -14,7 +14,7 @@ if isfile(join(this_directory, "requirements.txt")):
         install_requires = f.readlines()
 
 setup(name='patroller_webui',
-    version='1.0',
+    version='2.0',
     description='WebUI for patroller',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -31,8 +31,8 @@ setup(name='patroller_webui',
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.11',
     entry_points={
-        'console_scripts': ['patroller_webui=patroller_webui:main'],
+        'console_scripts': ['patroller_webui=patroller_webui:webui'],
     },
 )

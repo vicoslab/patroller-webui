@@ -8,13 +8,15 @@ RUN apt-get update --fix-missing && \
 
 ENV PYTHONPATH=/code
 
+# install requirements to utilize cache for development
+ADD requirements.txt /code/
+RUN pip3 install -r /code/requirements.txt --break-system-packages
+
 ADD patroller_webui /code/patroller_webui
 ADD main.sh /code/
 ADD setup.py /code/
 ADD README.md /code/
-ADD requirements.txt /code/
 
-RUN pip3 install -r /code/requirements.txt --break-system-packages
 RUN pip3 install /code/. --break-system-packages
 
 RUN chmod +x /code/main.sh

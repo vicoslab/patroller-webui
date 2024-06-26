@@ -13,7 +13,23 @@ def _load_config( cfg_path):
     
     return cfg
 
+def read_json_webpage(server_url, user=None, password=None, timeout=5):
+    request = urllib.request.Request(server_url)
+    
+    if user and password:
+        url_auth = base64.b64encode(('%s:%s' % (user, password)).encode('ascii'))
+        
+        request.add_header("Authorization", "Basic %s" % url_auth.decode("ascii"))
+
+    with urllib.request.urlopen(request, timeout=timeout) as url:
+        return json.loads(url.read().decode())
+
 class Patroller:
+    __STATUS_PAGE = "/status"
+    __DEVICES_PAGE = "/devices"
+    __REQUEST_PAGE = "/request"
+    __WAIT_PAGE = "/wait"
+
     def __init__(self, cfg_path):
         self.cfg = _load_config(cfg_path)
     
@@ -28,36 +44,34 @@ class Patroller:
 
         gpu_servers = cfg['servers']
 
-        url_auth = None
+        
+        user, password = None, None
         if 'http_auth_user' in self.cfg and 'http_auth_pass' in cfg:
-            url_auth = base64.b64encode(('%s:%s' % (cfg['http_auth_user'],
-                                                    cfg['http_auth_pass'])).encode('ascii'))
+            user, password = cfg['http_auth_user'], cfg['http_auth_pass']
 
         for server_cfg in gpu_servers:
             server_name = server_cfg['name']
-            server_url = server_cfg['url']
-            
+            server_url_status = server_cfg['url'] + self.__STATUS_PAGE
+            server_url_device = server_cfg['url'] + self.__DEVICES_PAGE
             try:
-                request = urllib.request.Request(server_url)
-                
+
+                server_user, server_password = user, password
                 if 'http_auth_user' in server_cfg and 'http_auth_pass' in server_cfg:
-                    url_auth = base64.b64encode(('%s:%s' % (server_cfg['http_auth_user'],
-                                                            server_cfg['http_auth_pass'])).encode('ascii'))
+                    server_user, server_password = server_cfg['http_auth_user'], server_cfg['http_auth_pass']
+                if server_cfg.get('disable_auth'):
+                    server_user, server_password = None, None
 
-                if url_auth is not None and not server_cfg.get('disable_auth'):
-                    request.add_header("Authorization", "Basic %s" % url_auth.decode("ascii"))
+                gpu_data = read_json_webpage(server_url_status, server_user, server_password)
+                gpu_details = read_json_webpage(server_url_device, server_user, server_password)
 
-                with urllib.request.urlopen(request, timeout=5) as url:
-                    gpu_data = json.loads(url.read().decode())
-
-                yield dict(name=server_name,url=server_url, data=gpu_data)
+                yield dict(name=server_name,url=server_url_status, data=gpu_data, devs=gpu_details)
                 
             except Exception as ex:
                 import traceback
-                print("Unable to retrieve status from '%s'" % server_url)
+                print("Unable to retrieve status from '%s'" % server_url_status)
                 traceback.print_exception(type(ex), ex, ex.__traceback__)
                 
-                yield dict(name=server_name,url=server_url, data=None)
+                yield dict(name=server_name,url=server_url_status, data=None)
 
 
 import pandas as pd

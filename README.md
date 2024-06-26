@@ -22,9 +22,9 @@ streamlit run patroller_webui/main.py [CONFIG.json]
   "http_auth_user": "username",
   "http_auth_pass": "password",
   "servers": [
-    {"name": "my_server_1", "url": "https://my_server_1.domain.com/status"},
-    {"name": "my_server_2", "url": "https://my_server_2.domain.com/status"},
-    {"name": "my_server_3", "url": "https://my_server_2.domain.com/status"},
+    {"name": "my_server_1", "url": "https://my_server_1.domain.com"},
+    {"name": "my_server_2", "url": "https://my_server_2.domain.com"},
+    {"name": "my_server_3", "url": "https://my_server_2.domain.com"},
   ],
   "user_label": "my-docker-label-for-username"
 }

@@ -4,6 +4,10 @@ import streamlit as st
 
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH
 
+def to_gigabytes(memory_mib):
+    return "{0} GB".format(int(int(memory_mib.split()[0]) / 1024))
+
+
 def run_dashboard():
     pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
 
@@ -28,6 +32,7 @@ def run_dashboard():
         server_name = server_cfg['name']
         server_url = server_cfg['url']
         gpu_data = server_cfg['data']
+        gpu_devs = server_cfg['devs']
         
         if gpu_data is None:
             with st.expander(server_name,expanded=True):
@@ -40,11 +45,22 @@ def run_dashboard():
             cols_info = st.columns(len(gpu_data))
             gpu_index = 0
             for gpu_index,(gpu_id,gpu_info) in enumerate(gpu_data.items()):
+                
+                gpu_dev = gpu_devs[gpu_id]
+
                 with cols_title[gpu_index]:
                     if show_gpu_id:
                         st.write(gpu_id)
                     else:
                         st.write("GPU %s %d" % (server_name,gpu_index))
+
+                    name = gpu_dev['name']
+                    name = name.replace("NVIDIA","")
+                    name = name.replace("GeForce","")
+                    name = name.replace("Quadro","")
+
+                    st.caption("{0} - {1}".format(name, to_gigabytes(gpu_dev['total_mem'])))
+
                 metric_idx = 0
                 if show_men_use or show_cpu_use:
                     with cols_metrics[gpu_index * num_metrics + metric_idx]:

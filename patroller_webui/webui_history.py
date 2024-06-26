@@ -2,16 +2,34 @@ import sys
 import streamlit as st
 import pandas as pd
 import numpy as np 
-import time
+import time, datetime
+
+
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
 
 def run_history_heatmap():
 
     pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
     
-    with st.form('filtering-form'):
+    # load history data
+    df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
+    df.index = pd.to_datetime(df.index, unit='s')
+
+    times = df.index.unique().to_list()
+
+    with st.form('hist-heatmap-filtering-form'):
         server_names = [s['name'] for s in pattroler.cfg['servers']]
         selected_servers = st.multiselect("Servers", server_names, server_names)
+
+        per_day_index = df.index.to_period('D')
+
+        selected_date = st.date_input(
+            "Select day",
+            per_day_index.max().to_timestamp().to_pydatetime(),
+            min_value=per_day_index.min().to_timestamp().to_pydatetime(),
+            max_value=per_day_index.max().to_timestamp().to_pydatetime(),
+            format="DD.MM.YYYY",
+        )
 
         st.form_submit_button('Apply filter')
 
@@ -27,18 +45,15 @@ def run_history_heatmap():
                 server_gpus_ids[n][g] = index
                 index += 1
         
-        # load history data
-        df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
-        df.index = pd.to_datetime(df.index, unit='s')
-
-        times = df.index.unique().to_list()
+        df_on_day = df[per_day_index == pd.to_datetime(selected_date).to_period('D')]
+        times_on_day = df_on_day.index.unique().to_list()
 
         # convert to occupancy blocks
         num_gpus = sum([len(g) for n,g in server_gpus.items() ])
-        occupancy_blocks = np.zeros((len(times), num_gpus), dtype=np.uint8)
+        occupancy_blocks = np.zeros((len(times_on_day), num_gpus), dtype=np.uint8)
 
-        for i,timestamp in enumerate(times):
-            for row in df.loc[df.index == timestamp].itertuples():
+        for i,timestamp in enumerate(times_on_day):
+            for row in df_on_day.loc[df_on_day.index == timestamp].itertuples():
                 server, gpu, user, age = row.server, row.gpu, row.user, row.age
                 if server in selected_servers:
                     j = server_gpus_ids[server][gpu]
@@ -48,7 +63,7 @@ def run_history_heatmap():
             color = 'red' if val == True else 'green'
             return f'background-color: {color}'
 
-        df_block = pd.DataFrame(occupancy_blocks, index=times)
+        df_block = pd.DataFrame(occupancy_blocks, index=times_on_day)
         df_block.columns = [f'{n}-{i}' for n,g in server_gpus_ids.items() for i,_ in enumerate(g)]
         df_block = df_block.sort_index(ascending=False)
 
@@ -66,9 +81,21 @@ def run_history_dashboard():
     df.index = pd.to_datetime(df.index, unit='s')
 
     times = df.index.unique().to_list()
+    per_day_index = df.index.to_period('D')
 
-    selected_datetime = st.select_slider("Selected date", options=times[::-1])
-    selected_df = df[df.index == selected_datetime]
+    selected_date = st.date_input(
+        "Select day",
+        per_day_index.max().to_timestamp().to_pydatetime(),
+        min_value=per_day_index.min().to_timestamp().to_pydatetime(),
+        max_value=per_day_index.max().to_timestamp().to_pydatetime(),
+        format="DD.MM.YYYY",
+    )
+
+    df_on_day = df[per_day_index == pd.to_datetime(selected_date).to_period('D')]
+
+    selected_timestamp = st.select_slider("Select time of day", options=df_on_day.index.unique().to_list()[::-1])
+
+    selected_df = df[df.index == selected_timestamp]
 
     num_gpus = sum([len(g) for n,g in server_gpus.items() ])
     num_gpus_occupided = len(selected_df)

@@ -40,13 +40,17 @@ def run_statistics():
     per_hour_index = df.index.to_period('h')
     per_hour_index.name = 'hour'
 
+    per_minute_index = df.index.to_period('min')
+    per_minute_index.name = 'minute'
+
     df = df.set_index(per_year_index, append=True)
     df = df.set_index(per_month_index, append=True)
     df = df.set_index(per_day_index, append=True)
     df = df.set_index(per_hour_index, append=True)
+    df = df.set_index(per_minute_index, append=True)
 
-    freq_val = ['year', 'month', 'day', 'hour']    
-    freq_factor = [365*24*60, 30.5*24*60, 24*60, 60]
+    freq_val = ['year', 'month', 'day', 'hour', 'minute']    
+    freq_factor = [365*24*60, 30.5*24*60, 24*60, 60, 1]
 
     freq_disp = st.multiselect('Select group frequency', freq_val, ['month'])
     

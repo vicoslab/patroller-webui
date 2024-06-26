@@ -29,30 +29,35 @@ def chronicle_patroller():
     pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
 
     while True:
-        # Monitor specific queries (implement this function later)
-        occupancy_data = retrieve_server_occupancy(pattroler)
-        print(occupancy_data)
-        
-        # Convert occupancy_data dict to pandas format with 'timestamp', 'server', 'gpu', 'user', 'age' columns:
-        time_now = time.time()
-        occupancy_list = []
-        for server, gpu_data in occupancy_data.items():
-            for gpu, info in gpu_data.items():
-                occupancy_list.append({
-                    'timestamp': time_now,
-                    'server': server,
-                    'gpu': gpu,
-                    'user': info['user'],
-                    'age': info['age']
-                })
+        try:
+            # Monitor specific queries (implement this function later)
+            occupancy_data = retrieve_server_occupancy(pattroler)
+            print(occupancy_data)
+            
+            # Convert occupancy_data dict to pandas format with 'timestamp', 'server', 'gpu', 'user', 'age' columns:
+            time_now = time.time()
+            occupancy_list = []
+            for server, gpu_data in occupancy_data.items():
+                for gpu, info in gpu_data.items():
+                    occupancy_list.append({
+                        'timestamp': time_now,
+                        'server': server,
+                        'gpu': gpu,
+                        'user': info['user'],
+                        'age': info['age']
+                    })
 
-        occupancy_df = pd.DataFrame(occupancy_list)
-        occupancy_df.set_index('timestamp', inplace=True)
+            occupancy_df = pd.DataFrame(occupancy_list,  columns=['timestamp', 'server', 'gpu', 'user','age'])
+            occupancy_df.set_index('timestamp', inplace=True)
+            
+            # Save results using fastparquet 
+            occupancy_df.to_parquet(__DEFAULT_DATABASE_PATH, index=True, engine='fastparquet', append=os.path.exists(__DEFAULT_DATABASE_PATH) and os.path.getsize(__DEFAULT_DATABASE_PATH) > 0)
 
-        
-        # Save results using fastparquet 
-        occupancy_df.to_parquet(__DEFAULT_DATABASE_PATH, index=True, engine='fastparquet', append=os.path.exists(__DEFAULT_DATABASE_PATH) and os.path.getsize(__DEFAULT_DATABASE_PATH) > 0)
-        
+        except Exception as ex:
+            print('Error while retrieve_server_occupancy and writing to parquet', ex)
+            import traceback
+            traceback.print_exception(type(ex), ex, ex.__traceback__)
+
         # Sleep for 1 minute before monitoring again        
         time.sleep(60)
 

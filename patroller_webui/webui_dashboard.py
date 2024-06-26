@@ -36,7 +36,7 @@ def run_dashboard():
 
         with st.expander(server_name,expanded=True):
             cols_title = st.columns(len(gpu_data))
-            cols_metrics = st.columns(len(gpu_data)* num_metrics)
+            cols_metrics = st.columns(len(gpu_data)* max(1,num_metrics))
             cols_info = st.columns(len(gpu_data))
             gpu_index = 0
             for gpu_index,(gpu_id,gpu_info) in enumerate(gpu_data.items()):

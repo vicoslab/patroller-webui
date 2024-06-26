@@ -12,18 +12,25 @@ def retrieve_server_occupancy(pattroler):
         gpu_data = server_cfg['data']
         
         if gpu_data is not None:
-            for gpu_id,gpu_info in gpu_data.items():
+            for gpu_index, (gpu_id,gpu_info) in enumerate(gpu_data.items()):
 
-                if "user" in gpu_info['claim']:
+                if "user" in gpu_info['claim'] and gpu_info['claim']['user'] is not None:
                     claim_age = gpu_info['claim']['age']
                     claim_user = gpu_info['claim']['user']
                     
                     if server_name not in occupancy_data:
                         occupancy_data[server_name] = dict()
 
-                    occupancy_data[server_name][gpu_id] = dict(user=claim_user, age=claim_age)
+                    occupancy_data[server_name][gpu_id] = dict(user=claim_user, age=claim_age, gpu_index=gpu_index)
 
     return occupancy_data
+
+def userdata_to_log(user, user_label):
+    if type(user) is dict:
+        return user[user_label]
+    else:
+        return user
+
 
 def chronicle_patroller():
     pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
@@ -42,12 +49,13 @@ def chronicle_patroller():
                     occupancy_list.append({
                         'timestamp': time_now,
                         'server': server,
-                        'gpu': gpu,
-                        'user': info['user'],
+                        'gpu': gpu,                        
+                        'gpu_index': info['gpu_index'],
+                        'user': userdata_to_log(info['user'], pattroler.cfg['user_label']),
                         'age': info['age']
                     })
 
-            occupancy_df = pd.DataFrame(occupancy_list,  columns=['timestamp', 'server', 'gpu', 'user','age'])
+            occupancy_df = pd.DataFrame(occupancy_list,  columns=['timestamp', 'server', 'gpu', 'gpu_index', 'user','age'])
             occupancy_df.set_index('timestamp', inplace=True)
             
             # Save results using fastparquet 

@@ -2,24 +2,21 @@ import sys
 import streamlit as st
 import pandas as pd
 import numpy as np 
-import time, datetime
+import time
 
-
-from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
+from patroller_webui import PatrollerHistory, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
 
 def run_history_heatmap():
 
-    pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
-    
-    # load history data
-    df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
-    df.index = pd.to_datetime(df.index, unit='s')
+    with st.spinner('Retrieving server gpus and history'):
+        pattroler_history = PatrollerHistory(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH,
+                                             sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)
+        
+        df = pattroler_history.get_history()
+        df.index = pd.to_datetime(df.index, unit='s')
 
-    times = df.index.unique().to_list()
-
-    with st.form('hist-heatmap-filtering-form'):
-        server_names = [s['name'] for s in pattroler.cfg['servers']]
-        selected_servers = st.multiselect("Servers", server_names, server_names)
+    with st.form('hist-heatmap-filtering-form'):        
+        selected_servers = st.multiselect("Servers", pattroler_history.list_servers(), pattroler_history.list_servers())
 
         per_day_index = df.index.to_period('D')
 
@@ -33,12 +30,13 @@ def run_history_heatmap():
 
         st.form_submit_button('Apply filter')
 
-    with st.spinner('Retrieving server gpus and history'):
-        # retrieve all server GPUs
-        server_gpus = {server_cfg['name']: [gpu_id for gpu_id,_ in server_cfg['data'].items()] for server_cfg in pattroler if server_cfg['name'] in selected_servers}
-
-        server_gpus_ids = {n:dict() for n,_ in server_gpus.items()}
+    with st.spinner('Converting to history heatmap'):
         
+        # retrieve selected server GPUs
+        server_gpus, _ = pattroler_history.find_server_gpus(selected_servers)
+
+        # get global indexes for all selected 
+        server_gpus_ids = {n:dict() for n,_ in server_gpus.items()}
         index = 0
         for n,gpus in server_gpus.items():
             for g in gpus:
@@ -71,13 +69,13 @@ def run_history_heatmap():
 
 def run_history_dashboard():  
 
-    pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
+    pattroler_history = PatrollerHistory(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH,
+                                         sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)
 
-    # retrieve all server GPUs
-    server_gpus = {server_cfg['name']: [gpu_id for gpu_id,_ in server_cfg['data'].items()] for server_cfg in pattroler}
+    # retrieve all server GPUs    
+    server_gpus, server_offline = pattroler_history.find_server_gpus()
     
-    # load history data
-    df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
+    df = pattroler_history.get_history()
     df.index = pd.to_datetime(df.index, unit='s')
 
     times = df.index.unique().to_list()
@@ -102,8 +100,13 @@ def run_history_dashboard():
 
     st.caption("Total available: %d / %d" % (num_gpus - num_gpus_occupided, num_gpus))
     for server_name,gpu_ids in server_gpus.items():
+        
+        if server_name in server_offline:
+            server_display_name = f"{server_name} - offline (may not have complete list of gpus)"
+        else:
+            server_display_name = server_name 
 
-        with st.expander(server_name,expanded=True):
+        with st.expander(server_display_name,expanded=True):
             cols_title = st.columns(len(gpu_ids))
             cols_info = st.columns(len(gpu_ids))
             gpu_index = 0
@@ -114,8 +117,7 @@ def run_history_dashboard():
                 with cols_info[gpu_index]:
                     if gpu_id in selected_df['gpu'].to_list():
                         user = selected_df[selected_df['gpu'] == gpu_id]['user'][0]
-                        st.write("❌ OCCUPIED: <a href=\"mailto:{0}\">{0}</a>".format(user),
-                                 unsafe_allow_html=True)
+                        st.write("❌ OCCUPIED: {0}".format(user), unsafe_allow_html=True)
                         
                         
                         claim_age = selected_df[selected_df['gpu'] == gpu_id]['age'][0]

@@ -70,9 +70,21 @@ def run_dashboard():
                     if gpu_info['claim']['age'] > 60*60:
                         claim_age = '%dh %s' % (int(gpu_info['claim']['age']/(60*60)), claim_age)
                         
-                    if "user" in gpu_info['claim']:
-                        st.write("❌ OCCUPIED: <a href=\"mailto:{0}\">{0}</a>".format(gpu_info['claim']['user']),
-                                 unsafe_allow_html=True)
+                    if "user" in gpu_info['claim'] and gpu_info['claim']['user'] is not None:
+                        
+                        if type(gpu_info['claim']['user']) is dict:
+                            user_display = str(gpu_info['claim']['user'][pattroler.cfg['user_label']])                            
+                            user_details = ""
+                            for k,v in gpu_info['claim']['user'].items():
+                                user_details += f"\n  * **{k}:** {v}"
+                        else:
+                            user_display = gpu_info['claim']['user']
+                            user_details = gpu_info['claim']['user']
+                        
+                        with st.popover(f"❌ OCCUPIED: {user_display}"):
+                            st.markdown(user_details)
+
+
                     else:
                         st.write("✔️ FREE " )
                     st.caption("last change %s ago" % claim_age)

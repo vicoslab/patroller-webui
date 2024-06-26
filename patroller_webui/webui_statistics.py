@@ -3,51 +3,44 @@ import streamlit as st
 import pandas as pd
 import numpy as np 
 
-from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
+from patroller_webui import PatrollerHistory, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
 
 def run_statistics():
     with st.spinner('Retrieving server gpus and history'):
 
-        pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
-        # retrieve all server GPUs
-        server_gpus = {server_cfg['name']: [gpu_id for gpu_id,_ in server_cfg['data'].items()] for server_cfg in pattroler}
-    
-        server_gpus_ids = {n:dict() for n,_ in server_gpus.items()}
+        pattroler_history = PatrollerHistory(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH,
+                                             sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)
 
-        index = 0
-        for n,gpus in server_gpus.items():
-            for g in gpus:
-                server_gpus_ids[n][g] = index
-                index += 1
+        # retrieve all server GPUs    
+        server_gpus, _ = pattroler_history.find_server_gpus()
 
-        # load history data
-        df = pd.read_parquet(sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)   
+        df = pattroler_history.get_history()
         df.index = pd.to_datetime(df.index, unit='s')
 
-    # add timestamp_gpu so that we can count unique instance per each (timestamp,gpu) instance
-    df['timestamp_gpu'] = list(zip(df.index, df['gpu']))
+        # add timestamp_gpu so that we can count unique instance per each (timestamp,gpu) instance
+        df['timestamp_gpu'] = list(zip(df.index, df['gpu']))
 
-    # prepare indexes for grouping
-    per_year_index = df.index.to_period('Y')
-    per_year_index.name = 'year'
+        # prepare indexes for grouping
+        per_year_index = df.index.to_period('Y')
+        per_year_index.name = 'year'
 
-    per_month_index = df.index.to_period('M')
-    per_month_index.name = 'month'
-    
-    per_day_index = df.index.to_period('D')
-    per_day_index.name = 'day'
+        per_month_index = df.index.to_period('M')
+        per_month_index.name = 'month'
+        
+        per_day_index = df.index.to_period('D')
+        per_day_index.name = 'day'
 
-    per_hour_index = df.index.to_period('h')
-    per_hour_index.name = 'hour'
+        per_hour_index = df.index.to_period('h')
+        per_hour_index.name = 'hour'
 
-    per_minute_index = df.index.to_period('min')
-    per_minute_index.name = 'minute'
+        per_minute_index = df.index.to_period('min')
+        per_minute_index.name = 'minute'
 
-    df = df.set_index(per_year_index, append=True)
-    df = df.set_index(per_month_index, append=True)
-    df = df.set_index(per_day_index, append=True)
-    df = df.set_index(per_hour_index, append=True)
-    df = df.set_index(per_minute_index, append=True)
+        df = df.set_index(per_year_index, append=True)
+        df = df.set_index(per_month_index, append=True)
+        df = df.set_index(per_day_index, append=True)
+        df = df.set_index(per_hour_index, append=True)
+        df = df.set_index(per_minute_index, append=True)
 
     freq_val = ['year', 'month', 'day', 'hour', 'minute']    
     freq_factor = [365*24*60, 30.5*24*60, 24*60, 60, 1]

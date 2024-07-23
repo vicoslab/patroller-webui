@@ -10,11 +10,13 @@ def retrieve_server_occupancy(pattroler):
     for server_cfg in pattroler:
         server_name = server_cfg['name']
         gpu_data = server_cfg['data']
-        
+        gpu_devs = server_cfg['devs']
+
         if gpu_data is not None:
-            for gpu_index, (gpu_id,gpu_info) in enumerate(gpu_data.items()):
+            for gpu_id,gpu_info in gpu_data.items():
 
                 if "user" in gpu_info['claim'] and gpu_info['claim']['user'] is not None:
+                    gpu_index = gpu_devs[gpu_id]['number']
                     claim_age = gpu_info['claim']['age']
                     claim_user = gpu_info['claim']['user']
                     

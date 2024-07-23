@@ -71,7 +71,7 @@ class Patroller:
                 print("Unable to retrieve status from '%s'" % server_url_status)
                 traceback.print_exception(type(ex), ex, ex.__traceback__)
                 
-                yield dict(name=server_name,url=server_url_status, data=None)
+                yield dict(name=server_name,url=server_url_status, data=None, devs=None)
 
 
 import pandas as pd
@@ -99,6 +99,7 @@ class PatrollerHistory:
 
         for server_cfg in self.patroller:
             server_name = server_cfg['name']
+            gpu_devs = server_cfg['devs']
 
             # skip if not requested this one
             if servers is not None and server_name not in servers:
@@ -106,7 +107,7 @@ class PatrollerHistory:
 
             if server_cfg['data'] is not None:
                 # get data from server
-                server_gpus[server_name] = [gpu_id for gpu_id,_ in server_cfg['data'].items()] 
+                server_gpus[server_name] = [gpu_id for gpu_id,_ in server_cfg['data'].items()]                
             else:            
                 # server is unavailable so try to get gpus from histroy
                 server_offline.append(server_name)
@@ -121,6 +122,10 @@ class PatrollerHistory:
                 gpu_index_to_id = dict(zip(missing_server_gpus['gpu_index'],missing_server_gpus['gpu']))
 
                 server_gpus[server_name] = [gpu_index_to_id[i] if i in gpu_index_to_id else 'unknown' for i in range(missing_server_gpus['gpu_index'].max()+1)]
+            
+            gpu_index_mapping = {gpu_id: gpu_devs[gpu_id]['number'] if gpu_id in gpu_devs else i for i, gpu_id in enumerate(server_gpus[server_name]) }
+            server_gpus[server_name] = sorted(server_gpus[server_name], key=lambda x: gpu_index_mapping[x])
+
 
         return server_gpus, server_offline
 

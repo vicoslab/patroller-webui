@@ -20,6 +20,7 @@ def run_dashboard():
     show_temp = st.sidebar.checkbox("Show GPU temperature",value=False)
     show_json = st.sidebar.checkbox("Show raw info",value=False)
     show_gpu_id = st.sidebar.checkbox("Show GPU ID instead of index",value=False)
+    unordered_list = st.sidebar.checkbox("Unordered list",value=False)
 
     total_info = st.empty()
     st.button("Refresh")
@@ -43,16 +44,20 @@ def run_dashboard():
             cols_title = st.columns(len(gpu_data))
             cols_metrics = st.columns(len(gpu_data)* max(1,num_metrics))
             cols_info = st.columns(len(gpu_data))
-            gpu_index = 0
             for gpu_index,(gpu_id,gpu_info) in enumerate(gpu_data.items()):
                 
                 gpu_dev = gpu_devs[gpu_id]
 
-                with cols_title[gpu_index]:
+                disply_index = gpu_dev['number']
+
+                if unordered_list:
+                    disply_index = gpu_index
+
+                with cols_title[disply_index]:
                     if show_gpu_id:
                         st.write(gpu_id)
                     else:
-                        st.write("GPU %s %d" % (server_name,gpu_index))
+                        st.write("GPU %s %d" % (server_name,disply_index))
 
                     name = gpu_dev['name']
                     name = name.replace("NVIDIA","")
@@ -63,7 +68,7 @@ def run_dashboard():
 
                 metric_idx = 0
                 if show_men_use or show_cpu_use:
-                    with cols_metrics[gpu_index * num_metrics + metric_idx]:
+                    with cols_metrics[disply_index * num_metrics + metric_idx]:
                         util_str = []
                         util_val = []
                         if show_men_use:
@@ -76,11 +81,11 @@ def run_dashboard():
                         st.metric("%s utilization" % "/".join(util_str), '%s %%' % "/".join(util_val))
                         metric_idx += 1
                 if show_temp:
-                    with cols_metrics[gpu_index * num_metrics + metric_idx]:
+                    with cols_metrics[disply_index * num_metrics + metric_idx]:
                         st.metric("Temperature", '%d °C' % gpu_info['gtemp'])
                         metric_idx += 1
 
-                with cols_info[gpu_index]:
+                with cols_info[disply_index]:
                     claim_age = time.strftime('%Mm %Ssec', time.gmtime(gpu_info['claim']['age']))
                     
                     if gpu_info['claim']['age'] > 60*60:
@@ -108,6 +113,6 @@ def run_dashboard():
                         st.json(gpu_info)
 
                     total += 1
-                    total_available += 0 if "user" in gpu_info['claim'] else 1
+                    total_available += 0 if "user" in gpu_info['claim'] and gpu_info['claim']['user'] is not None else 1
                     with total_info:
                         st.caption("Total available: %d / %d" % (total_available, total))

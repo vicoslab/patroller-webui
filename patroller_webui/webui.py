@@ -2,7 +2,7 @@ import streamlit as st
 
 from webui_dashboard import run_dashboard
 from webui_history import run_history_dashboard, run_history_heatmap
-from webui_statistics import run_statistics
+from webui_statistics import run_statistics, run_user_statistics
 
 def run():
     st.set_page_config(layout="wide", page_title="Patroller")
@@ -12,10 +12,10 @@ def run():
     history_heatmap = st.Page(run_history_heatmap, title="History Heatmap", url_path="history_heatmap", icon=":material/history:")
 
     statistics = st.Page(run_statistics, title="Statistics", url_path="statistics", icon=":material/pie_chart:")
-    
+    statistcis_user = st.Page(run_user_statistics, title="User Statistics", url_path="statistics_user", icon=":material/pie_chart:")
 
     pg = st.navigation(
-        [dashboard, history_dashboard, history_heatmap, statistics]
+        [dashboard, history_dashboard, history_heatmap, statistics, statistcis_user]
     )
 
     pg.run()

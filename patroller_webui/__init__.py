@@ -1,8 +1,8 @@
-import os, json
+import os, json, glob
 import urllib.request, base64
 
 __DEFAULT_CONFIG_PATH = "/etc/patroller/web-ui.json"
-__DEFAULT_DATABASE_PATH = "/code/occupancy_data.parquet"
+__DEFAULT_DATABASE_PATH = "/code/occupancy_data/data.parquet"
 
 def _load_config( cfg_path):
     if os.path.exists(cfg_path):
@@ -80,7 +80,17 @@ class PatrollerHistory:
     def __init__(self, cfg_path, db_path):
         self.patroller = Patroller(cfg_path=cfg_path)
         
-        self.data = pd.read_parquet(db_path)
+        base, ext = os.path.splitext(db_path)
+        pattern = f"{base}*.parquet"
+        files = glob.glob(pattern)
+
+        if not files:
+            raise FileNotFoundError(f"No indexed parquet files found matching {pattern}")
+
+        # Read all parquet files into one DataFrame
+        df_list = [pd.read_parquet(f) for f in files]
+        self.data = pd.concat(df_list).sort_index()
+
 
     def list_servers(self):
         return self.patroller.list_servers()

@@ -1,7 +1,8 @@
-import sys, os, time
-
+import sys, os, time, glob
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
 import pandas as pd
+
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 
 def retrieve_server_occupancy(pattroler):
 
@@ -27,21 +28,47 @@ def retrieve_server_occupancy(pattroler):
 
     return occupancy_data
 
+
 def userdata_to_log(user, user_label):
-    if type(user) is dict:
+    if isinstance(user, dict):
         return user[user_label]
     else:
         return user
 
 
+def get_latest_parquet_path():
+    """Find latest indexed parquet file and return its path and index."""
+    base, ext = os.path.splitext(__DEFAULT_DATABASE_PATH)  # /code/occupancy_data/data , .parquet
+    pattern = f"{base}_*.parquet"
+    files = glob.glob(pattern)
+
+    if not files:
+        return f"{base}_0.parquet", 0
+
+    indexed_files = []
+    for f in files:
+        try:
+            idx = int(os.path.splitext(f)[0].split("_")[-1])
+            indexed_files.append((idx, f))
+        except ValueError:
+            pass
+
+    if not indexed_files:
+        return f"{base}_0.parquet", 0
+
+    latest_idx, latest_file = max(indexed_files, key=lambda x: x[0])
+    return latest_file, latest_idx
+
+
 def chronicle_patroller():
     pattroler = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
+
+    parquet_path, file_index = get_latest_parquet_path()
 
     while True:
         try:
             # Monitor specific queries (implement this function later)
             occupancy_data = retrieve_server_occupancy(pattroler)
-            print(occupancy_data)
             
             # Convert occupancy_data dict to pandas format with 'timestamp', 'server', 'gpu', 'user', 'age' columns:
             time_now = time.time()
@@ -59,9 +86,19 @@ def chronicle_patroller():
 
             occupancy_df = pd.DataFrame(occupancy_list,  columns=['timestamp', 'server', 'gpu', 'gpu_index', 'user','age'])
             occupancy_df.set_index('timestamp', inplace=True)
+
+            # Check file size before writing
+            if os.path.exists(parquet_path) and os.path.getsize(parquet_path) > MAX_FILE_SIZE:
+                file_index += 1
+                base, ext = os.path.splitext(__DEFAULT_DATABASE_PATH)
+                parquet_path = f"{base}_{file_index}.parquet"
             
-            # Save results using fastparquet 
-            occupancy_df.to_parquet(__DEFAULT_DATABASE_PATH, index=True, engine='fastparquet', append=os.path.exists(__DEFAULT_DATABASE_PATH) and os.path.getsize(__DEFAULT_DATABASE_PATH) > 0)
+            occupancy_df.to_parquet(
+                parquet_path,
+                index=True,
+                engine='fastparquet',
+                append=os.path.exists(parquet_path) and os.path.getsize(parquet_path) > 0
+            )
 
         except Exception as ex:
             print('Error while retrieve_server_occupancy and writing to parquet', ex)

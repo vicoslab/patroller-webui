@@ -4,6 +4,46 @@ import urllib.request, base64
 __DEFAULT_CONFIG_PATH = "/etc/patroller/web-ui.json"
 __DEFAULT_DATABASE_PATH = "/code/occupancy_data/data.parquet"
 
+UNKNOWN_USER_DISPLAY = "Unknown user"
+EMAIL_NOT_AVAILABLE_DISPLAY = "N/A"
+
+def _is_missing_user_value(value):
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+def get_user_display_name(user, user_label=None):
+    """Return a safe display name for a patroller user payload."""
+    if isinstance(user, dict):
+        candidate_keys = [user_label, "name", "username", "user", "login", "email"]
+        for key in candidate_keys:
+            if key and key in user and not _is_missing_user_value(user.get(key)):
+                return str(user[key])
+        return UNKNOWN_USER_DISPLAY
+
+    if _is_missing_user_value(user):
+        return UNKNOWN_USER_DISPLAY
+
+    return str(user)
+
+def format_user_details(user, user_label=None):
+    """Return markdown-safe details for a patroller user payload."""
+    if isinstance(user, dict):
+        details = []
+        keys = list(user.keys())
+        if user_label and user_label not in user:
+            keys.insert(0, user_label)
+        if "email" not in keys:
+            keys.append("email")
+
+        for key in keys:
+            value = user.get(key, EMAIL_NOT_AVAILABLE_DISPLAY if key == "email" else UNKNOWN_USER_DISPLAY)
+            if _is_missing_user_value(value):
+                value = EMAIL_NOT_AVAILABLE_DISPLAY if key == "email" else UNKNOWN_USER_DISPLAY
+            details.append(f"  * **{key}:** {value}")
+
+        return "\n".join(details)
+
+    return get_user_display_name(user, user_label)
+
 def _load_config( cfg_path):
     if os.path.exists(cfg_path):
         with open(cfg_path,'r') as f:

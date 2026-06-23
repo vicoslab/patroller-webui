@@ -2,7 +2,7 @@ import sys, time
 
 import streamlit as st
 
-from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH
+from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, format_user_details, get_user_display_name
 
 def to_gigabytes(memory_mib):
     return "{0} GB".format(int(int(memory_mib.split()[0]) / 1024))
@@ -86,25 +86,21 @@ def run_dashboard():
                         metric_idx += 1
 
                 with cols_info[disply_index]:
-                    claim_age = time.strftime('%Mm %Ssec', time.gmtime(gpu_info['claim']['age']))
+                    claim = gpu_info.get('claim') or {}
+                    claim_age_seconds = claim.get('age', 0)
+                    claim_age = time.strftime('%Mm %Ssec', time.gmtime(claim_age_seconds))
                     
-                    if gpu_info['claim']['age'] > 60*60:
-                        claim_age = '%dh %s' % (int(gpu_info['claim']['age']/(60*60)), claim_age)
+                    if claim_age_seconds > 60*60:
+                        claim_age = '%dh %s' % (int(claim_age_seconds/(60*60)), claim_age)
                         
-                    if "user" in gpu_info['claim'] and gpu_info['claim']['user'] is not None:
-                        
-                        if type(gpu_info['claim']['user']) is dict:
-                            user_display = str(gpu_info['claim']['user'][pattroler.cfg['user_label']])                            
-                            user_details = ""
-                            for k,v in gpu_info['claim']['user'].items():
-                                user_details += f"\n  * **{k}:** {v}"
-                        else:
-                            user_display = gpu_info['claim']['user']
-                            user_details = gpu_info['claim']['user']
-                        
+                    claim_user = claim.get('user')
+                    if claim_user is not None:
+                        user_label = pattroler.cfg.get('user_label')
+                        user_display = get_user_display_name(claim_user, user_label)
+                        user_details = format_user_details(claim_user, user_label)
+
                         with st.popover(f"❌ OCCUPIED: {user_display}"):
                             st.markdown(user_details)
-
 
                     else:
                         st.write("✔️ FREE " )
@@ -113,6 +109,6 @@ def run_dashboard():
                         st.json(gpu_info)
 
                     total += 1
-                    total_available += 0 if "user" in gpu_info['claim'] and gpu_info['claim']['user'] is not None else 1
+                    total_available += 0 if gpu_info.get('claim', {}).get('user') is not None else 1
                     with total_info:
                         st.caption("Total available: %d / %d" % (total_available, total))

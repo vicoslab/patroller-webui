@@ -1,5 +1,5 @@
 import sys, os, time, glob
-from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
+from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH, get_user_display_name
 import pandas as pd
 
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
@@ -30,10 +30,7 @@ def retrieve_server_occupancy(pattroler):
 
 
 def userdata_to_log(user, user_label):
-    if isinstance(user, dict):
-        return user[user_label]
-    else:
-        return user
+    return get_user_display_name(user, user_label)
 
 
 def get_latest_parquet_path():

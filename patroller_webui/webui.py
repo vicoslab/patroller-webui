@@ -1,6 +1,7 @@
 import streamlit as st
 
 from webui_dashboard import run_dashboard
+from webui_reservations import run_reservations
 from webui_history import run_history_dashboard, run_history_heatmap
 from webui_statistics import run_statistics, run_user_statistics
 
@@ -14,8 +15,10 @@ def run():
     statistics = st.Page(run_statistics, title="Statistics", url_path="statistics", icon=":material/pie_chart:")
     statistcis_user = st.Page(run_user_statistics, title="User Statistics", url_path="statistics_user", icon=":material/pie_chart:")
 
+    reservations = st.Page(run_reservations, title="Reservations", url_path="reservations", icon="🔒")
+
     pg = st.navigation(
-        [dashboard, history_dashboard, history_heatmap, statistics, statistcis_user]
+        [dashboard, reservations, history_dashboard, history_heatmap, statistics, statistcis_user]
     )
 
     pg.run()

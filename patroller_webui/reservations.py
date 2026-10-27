@@ -1,0 +1,135 @@
+"""Reservation API and timezone helpers. Credentials remain server-side."""
+import base64
+import json
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+
+class ReservationError(Exception):
+    def __init__(self, state, message):
+        super().__init__(message)
+        self.state = state
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class ReservationClient:
+    def __init__(self, server, config):
+        self.server = server
+        self.config = config
+        self.token = server.get('reservation_token', config.get('reservation_token'))
+
+    @property
+    def writable(self):
+        return bool(self.token)
+
+    def _request(self, path, method='GET', payload=None):
+        headers = {'Accept': 'application/json'}
+        user = self.server.get('http_auth_user', self.config.get('http_auth_user'))
+        password = self.server.get('http_auth_pass', self.config.get('http_auth_pass'))
+        basic = bool(user and password and not self.server.get('disable_auth'))
+        if basic:
+            encoded = base64.b64encode(f'{user}:{password}'.encode()).decode()
+            headers['Authorization'] = f'Basic {encoded}'
+        if method != 'GET':
+            if not self.token:
+                raise ReservationError('read-only', 'No reservation write credential is configured.')
+            headers['X-Patroller-Reservation-Token' if basic else 'Authorization'] = self.token if basic else f'Bearer {self.token}'
+            headers['Content-Type'] = 'application/json'
+        req = urllib.request.Request(self.server['url'].rstrip('/') + path,
+                                     data=json.dumps(payload).encode() if payload is not None else None,
+                                     headers=headers, method=method)
+        try:
+            with urllib.request.build_opener(NoRedirect()).open(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            states = {401: ('read-only', 'Authorization failed.'), 403: ('read-only', 'Write access denied.'),
+                      404: ('unsupported' if method == 'GET' else 'not-found', 'Reservation endpoint or record not found.'),
+                      409: ('conflict', 'The reservation conflicts with another booking.'),
+                      503: ('disabled', 'Reservations are disabled or unavailable on this server.'),
+                      400: ('invalid', 'The server rejected the reservation data.'),
+                      **{code: ('error', 'Reservation redirects are not allowed.') for code in (301, 302, 303, 307, 308)}}
+            state, message = states.get(exc.code, ('error', 'Reservation request failed.'))
+            raise ReservationError(state, message) from None
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            raise ReservationError('offline', 'Server unavailable or returned an invalid response.') from None
+
+    def list(self):
+        result = self._request('/reservations')
+        if not isinstance(result, list):
+            raise ReservationError('error', 'Server returned an invalid reservation list.')
+        return result
+
+    def create(self, payload):
+        return self._request('/reserve', 'POST', payload)
+
+    def update(self, record_id, payload):
+        return self._request('/reservations/' + urllib.parse.quote(record_id, safe=''), 'PATCH', payload)
+
+    def cancel(self, record_id):
+        return self._request('/unreserve', 'POST', {'id': record_id})
+
+
+def local_to_utc(value, zone):
+    tz = ZoneInfo(zone)
+    candidates = []
+    for fold in (0, 1):
+        aware = value.replace(tzinfo=tz, fold=fold)
+        utc = aware.astimezone(timezone.utc)
+        if utc.astimezone(tz).replace(tzinfo=None) == value and utc not in candidates:
+            candidates.append(utc)
+    if len(candidates) != 1:
+        raise ValueError('Local time is ambiguous or does not exist due to daylight saving time.')
+    return candidates[0]
+
+
+def make_payload(gpus, owner, start, end, note, zone):
+    owner = owner.strip()
+    if not gpus or len(set(gpus)) != len(gpus):
+        raise ValueError('Select at least one GPU.')
+    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', owner):
+        raise ValueError('Enter a valid owner email.')
+    start_utc, end_utc = local_to_utc(start, zone), local_to_utc(end, zone)
+    if end_utc <= start_utc:
+        raise ValueError('End must be after start.')
+    return {'gpu_uuids': gpus, 'owner_email': owner, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
+            'end_at': end_utc.isoformat().replace('+00:00', 'Z'), 'note': note}
+
+
+def parse_time(value):
+    return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+
+def overlaps_days(record, after, before, zone):
+    tz = ZoneInfo(zone)
+    start, end = parse_time(record['start_at']), parse_time(record['end_at'])
+    if after and end <= datetime.combine(after, time.min, tzinfo=tz).astimezone(timezone.utc):
+        return False
+    if before and start >= datetime.combine(before + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc):
+        return False
+    return True
+
+
+def reservation_status(record, now=None):
+    now = now or datetime.now(timezone.utc)
+    if now < parse_time(record['start_at']): return 'Upcoming'
+    if now < parse_time(record['end_at']): return 'Active'
+    return 'Past'
+
+
+def gpu_state(info):
+    if (info.get('claim') or {}).get('user') is not None:
+        return 'OCCUPIED', False
+    if (info.get('reservation_state') == 'unavailable' or
+            'active_reservation' not in info or 'next_reservation' not in info):
+        return 'UNKNOWN', False
+    if info['active_reservation']:
+        return 'IDLE', False
+    return 'FREE', True

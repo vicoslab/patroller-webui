@@ -107,10 +107,8 @@ class Patroller:
                 yield dict(name=server_name,url=server_url_status, data=gpu_data, devs=gpu_details)
                 
             except Exception as ex:
-                import traceback
-                print("Unable to retrieve status from '%s'" % server_url_status)
-                traceback.print_exception(type(ex), ex, ex.__traceback__)
-                
+                print('Unable to retrieve server status')
+
                 yield dict(name=server_name,url=server_url_status, data=None, devs=None)
 
 

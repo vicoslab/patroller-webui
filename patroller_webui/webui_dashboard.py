@@ -3,6 +3,8 @@ import sys, time
 import streamlit as st
 
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, format_user_details, get_user_display_name
+from patroller_webui.reservations import gpu_state, parse_time
+from zoneinfo import ZoneInfo
 
 def to_gigabytes(memory_mib):
     return "{0} GB".format(int(int(memory_mib.split()[0]) / 1024))
@@ -37,7 +39,7 @@ def run_dashboard():
         
         if gpu_data is None:
             with st.expander(server_name,expanded=True):
-                st.error("Unable to retrieve status from '%s'" % server_url)              
+                st.error("Unable to retrieve server status")
             continue
 
         with st.expander(server_name,expanded=True):
@@ -103,12 +105,23 @@ def run_dashboard():
                             st.markdown(user_details)
 
                     else:
-                        st.write("✔️ FREE " )
+                        state, _ = gpu_state(gpu_info)
+                        st.write({'FREE': '✔️ FREE', 'IDLE': 'IDLE', 'UNKNOWN': 'Reservation state unknown'}[state])
+                    bookings = [gpu_info.get('active_reservation'), gpu_info.get('next_reservation')]
+                    bookings = [b for b in bookings if b]
+                    if bookings:
+                        with st.popover('🔒', help='View active or upcoming reservations'):
+                            zone = pattroler.cfg.get('timezone', 'Europe/Ljubljana')
+                            for booking in bookings:
+                                st.write(booking.get('owner_email', ''))
+                                st.write(f"{parse_time(booking['start_at']).astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} – {parse_time(booking['end_at']).astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} ({zone})")
+                                if booking.get('note'):
+                                    st.write(booking['note'])
                     st.caption("last change %s ago" % claim_age)
                     if show_json:
-                        st.json(gpu_info)
+                        st.json({k: v for k, v in gpu_info.items() if k not in ('active_reservation', 'next_reservation')})
 
                     total += 1
-                    total_available += 0 if gpu_info.get('claim', {}).get('user') is not None else 1
+                    total_available += int(gpu_state(gpu_info)[1])
                     with total_info:
                         st.caption("Total available: %d / %d" % (total_available, total))

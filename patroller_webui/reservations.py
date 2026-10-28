@@ -117,6 +117,18 @@ def overlaps_days(record, after, before, zone):
     return True
 
 
+def reservation_countdown(record, now=None):
+    """Compact time to the start of restrictions, recomputed on dashboard refresh."""
+    now = now or datetime.now(timezone.utc)
+    seconds = max(0, int((parse_time(record['start_at']) - now).total_seconds()))
+    if seconds < 60:
+        return '<1m'
+    days, remaining = divmod(seconds // 60, 24 * 60)
+    hours, minutes = divmod(remaining, 60)
+    return ' '.join(f'{value}{unit}' for value, unit in
+                    ((days, 'd'), (hours, 'h'), (minutes, 'm')) if value)
+
+
 def reservation_status(record, now=None):
     now = now or datetime.now(timezone.utc)
     if now < parse_time(record['start_at']): return 'Upcoming'

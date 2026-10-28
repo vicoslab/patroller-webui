@@ -13,6 +13,7 @@ UPCOMING = dict(BOOKING, id='next', owner_email='bob@example.org',
 
 def dashboard_display_fixture(claim_user, active, upcoming, users, user_label):
     from unittest.mock import patch
+    from datetime import datetime, timezone
     from webui_dashboard import run_dashboard
 
     class FakePatroller:
@@ -25,7 +26,12 @@ def dashboard_display_fixture(claim_user, active, upcoming, users, user_label):
                                            'active_reservation': active, 'next_reservation': upcoming}},
                           'devs': {'gpu': {'number': 0, 'name': 'GPU', 'total_mem': '24576 MiB'}}}])
 
-    with patch('webui_dashboard.Patroller', FakePatroller):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2030, 1, 2, 6, 45, tzinfo=timezone.utc).astimezone(tz)
+
+    with patch('webui_dashboard.Patroller', FakePatroller), patch('patroller_webui.reservations.datetime', FixedDateTime):
         run_dashboard()
 
 
@@ -57,9 +63,9 @@ def test_future_reservation_has_separate_unlocked_details_button(claim_user):
     app = render(claim_user, upcoming=UPCOMING)
     labels = [item.proto.popover.label for item in app.get('popover')]
     if claim_user:
-        assert labels == ['❌ OCCUPIED: Other user', '🔓']
+        assert labels == ['❌ OCCUPIED: Other user', '🔓 Reservations in 2h 15m']
     else:
-        assert labels == ['🔓']
+        assert labels == ['🔓 Reservations in 2h 15m']
         assert any('✔️ FREE' in item.value for item in app.markdown)
         assert any('Total available: 1 / 1' in item.value for item in app.caption)
     assert not any('RESERVED:' in label or '🔒' in label for label in labels)

@@ -3,7 +3,7 @@ import sys, time
 import streamlit as st
 
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, format_user_details, get_user_display_name
-from patroller_webui.reservations import gpu_state, parse_time
+from patroller_webui.reservations import gpu_state, parse_time, reservation_countdown
 from zoneinfo import ZoneInfo
 
 def to_gigabytes(memory_mib):
@@ -118,7 +118,7 @@ def run_dashboard():
                             owner_display = get_user_display_name(owner)
                             label = f'🔒 RESERVED: {owner_display}'
                         else:
-                            label = '🔓'
+                            label = f"🔓 Reservations in {reservation_countdown(gpu_info['next_reservation'])}"
                         with st.popover(label, help='View active reservation details' if active else 'View upcoming reservations'):
                             zone = pattroler.cfg.get('timezone', 'Europe/Ljubljana')
                             for booking in bookings:

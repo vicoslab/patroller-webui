@@ -1,6 +1,7 @@
 """Reservation API and timezone helpers. Credentials remain server-side."""
 import base64
 import json
+import math
 import re
 import urllib.error
 import urllib.parse
@@ -90,7 +91,7 @@ def local_to_utc(value, zone):
     return candidates[0]
 
 
-def make_payload(gpus, owner, start, end, note, zone):
+def make_payload(gpus, owner, start, end, note, zone, recurrence=None):
     owner = owner.strip()
     if not gpus or len(set(gpus)) != len(gpus):
         raise ValueError('Select at least one GPU.')
@@ -99,8 +100,36 @@ def make_payload(gpus, owner, start, end, note, zone):
     start_utc, end_utc = local_to_utc(start, zone), local_to_utc(end, zone)
     if end_utc <= start_utc:
         raise ValueError('End must be after start.')
-    return {'gpu_uuids': gpus, 'owner_email': owner, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
-            'end_at': end_utc.isoformat().replace('+00:00', 'Z'), 'note': note}
+    payload = {'gpu_uuids': gpus, 'owner_email': owner, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
+               'end_at': end_utc.isoformat().replace('+00:00', 'Z'), 'note': note}
+    if recurrence is not None:
+        payload['recurrence'] = recurrence
+    return payload
+
+
+def make_duration_payload(gpus, owner, start, duration, note, zone, recurrence=None, original_duration=None, owner_name=None):
+    unchanged = (isinstance(original_duration, timedelta) and original_duration > timedelta(0)
+                 and duration == original_duration.total_seconds() / 3600)
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not (0.25 <= duration <= 8784 or unchanged):
+        raise ValueError('Duration must be between 0.25 and 8784 hours.')
+    start_utc = local_to_utc(start, zone)
+    owner = owner.strip()
+    if not gpus or len(set(gpus)) != len(gpus):
+        raise ValueError('Select at least one GPU.')
+    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', owner):
+        raise ValueError('Enter a valid owner email.')
+    end_utc = start_utc + (original_duration if unchanged else timedelta(hours=duration))
+    payload = {'gpu_uuids': gpus, 'owner_email': owner, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
+               'end_at': end_utc.isoformat().replace('+00:00', 'Z'), 'note': note}
+    if recurrence is not None:
+        payload['recurrence'] = recurrence
+    if owner_name is not None:
+        if (not isinstance(owner_name, str) or len(owner_name) > 200
+                or any(ord(char) < 32 or ord(char) == 127 for char in owner_name)):
+            raise ValueError('Owner name must be plain text, at most 200 characters.')
+        if owner_name.strip():
+            payload['owner_name'] = owner_name.strip()
+    return payload
 
 
 def parse_time(value):
@@ -109,6 +138,10 @@ def parse_time(value):
 
 def overlaps_days(record, after, before, zone):
     tz = ZoneInfo(zone)
+    return any(_window_overlaps_days(window, after, before, tz) for window in record.get('occurrences', [record]))
+
+
+def _window_overlaps_days(record, after, before, tz):
     start, end = parse_time(record['start_at']), parse_time(record['end_at'])
     if after and end <= datetime.combine(after, time.min, tzinfo=tz).astimezone(timezone.utc):
         return False
@@ -131,8 +164,9 @@ def reservation_countdown(record, now=None):
 
 def reservation_status(record, now=None):
     now = now or datetime.now(timezone.utc)
-    if now < parse_time(record['start_at']): return 'Upcoming'
-    if now < parse_time(record['end_at']): return 'Active'
+    windows = record.get('occurrences', [record])
+    if any(parse_time(w['start_at']) <= now < parse_time(w['end_at']) for w in windows): return 'Active'
+    if any(now < parse_time(w['start_at']) for w in windows): return 'Upcoming'
     return 'Past'
 
 

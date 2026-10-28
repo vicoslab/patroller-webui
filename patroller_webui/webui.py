@@ -15,7 +15,7 @@ def run():
     statistics = st.Page(run_statistics, title="Statistics", url_path="statistics", icon=":material/pie_chart:")
     statistcis_user = st.Page(run_user_statistics, title="User Statistics", url_path="statistics_user", icon=":material/pie_chart:")
 
-    reservations = st.Page(run_reservations, title="Reservations", url_path="reservations", icon="🔒")
+    reservations = st.Page(run_reservations, title="Reservations", url_path="reservations", icon=":material/lock:")
 
     pg = st.navigation(
         [dashboard, reservations, history_dashboard, history_heatmap, statistics, statistcis_user]

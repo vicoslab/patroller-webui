@@ -115,15 +115,20 @@ def run_dashboard():
                             owner = next((u for u in pattroler.cfg.get('reservation_users', [])
                                           if u.get('email', '').strip().casefold() == owner_email.strip().casefold()),
                                          {'email': owner_email})
-                            owner_display = get_user_display_name(owner)
+                            owner_display = active.get('owner_name') or get_user_display_name(owner)
                             label = f'🔒 RESERVED: {owner_display}'
                         else:
                             label = f"🔓 Reservations in {reservation_countdown(gpu_info['next_reservation'])}"
                         with st.popover(label, help='View active reservation details' if active else 'View upcoming reservations'):
                             zone = pattroler.cfg.get('timezone', 'Europe/Ljubljana')
                             for booking in bookings:
+                                if booking.get('owner_name'):
+                                    st.text(booking['owner_name'])
                                 st.write(booking.get('owner_email', ''))
-                                st.write(f"{parse_time(booking['start_at']).astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} – {parse_time(booking['end_at']).astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} ({zone})")
+                                start = parse_time(booking['start_at'])
+                                duration_hours = (parse_time(booking['end_at']) - start).total_seconds() / 3600
+                                st.write(f"Start: {start.astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} ({zone})")
+                                st.write(f"Duration: {duration_hours:g} {'hour' if duration_hours == 1 else 'hours'}")
                                 if booking.get('note'):
                                     st.write(booking['note'])
                     if not active:

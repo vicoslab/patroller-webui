@@ -95,29 +95,39 @@ def run_dashboard():
                     if claim_age_seconds > 60*60:
                         claim_age = '%dh %s' % (int(claim_age_seconds/(60*60)), claim_age)
                         
+                    active = gpu_info.get('active_reservation')
                     claim_user = claim.get('user')
-                    if claim_user is not None:
-                        user_label = pattroler.cfg.get('user_label')
-                        user_display = get_user_display_name(claim_user, user_label)
-                        user_details = format_user_details(claim_user, user_label)
+                    if not active:
+                        if claim_user is not None:
+                            user_label = pattroler.cfg.get('user_label')
+                            user_display = get_user_display_name(claim_user, user_label)
+                            user_details = format_user_details(claim_user, user_label)
 
-                        with st.popover(f"❌ OCCUPIED: {user_display}"):
-                            st.markdown(user_details)
-
-                    else:
-                        state, _ = gpu_state(gpu_info)
-                        st.write({'FREE': '✔️ FREE', 'IDLE': 'IDLE', 'UNKNOWN': 'Reservation state unknown'}[state])
-                    bookings = [gpu_info.get('active_reservation'), gpu_info.get('next_reservation')]
-                    bookings = [b for b in bookings if b]
+                            with st.popover(f"❌ OCCUPIED: {user_display}"):
+                                st.markdown(user_details)
+                        else:
+                            state, _ = gpu_state(gpu_info)
+                            st.write({'FREE': '✔️ FREE', 'UNKNOWN': 'Reservation state unknown'}[state])
+                    bookings = [b for b in (active, gpu_info.get('next_reservation')) if b]
                     if bookings:
-                        with st.popover('🔒', help='View active or upcoming reservations'):
+                        if active:
+                            owner_email = active.get('owner_email', '')
+                            owner = next((u for u in pattroler.cfg.get('reservation_users', [])
+                                          if u.get('email', '').strip().casefold() == owner_email.strip().casefold()),
+                                         {'email': owner_email})
+                            owner_display = get_user_display_name(owner)
+                            label = f'🔒 RESERVED: {owner_display}'
+                        else:
+                            label = '🔓'
+                        with st.popover(label, help='View active reservation details' if active else 'View upcoming reservations'):
                             zone = pattroler.cfg.get('timezone', 'Europe/Ljubljana')
                             for booking in bookings:
                                 st.write(booking.get('owner_email', ''))
                                 st.write(f"{parse_time(booking['start_at']).astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} – {parse_time(booking['end_at']).astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} ({zone})")
                                 if booking.get('note'):
                                     st.write(booking['note'])
-                    st.caption("last change %s ago" % claim_age)
+                    if not active:
+                        st.caption("last change %s ago" % claim_age)
                     if show_json:
                         st.json({k: v for k, v in gpu_info.items() if k not in ('active_reservation', 'next_reservation')})
 

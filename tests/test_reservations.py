@@ -80,10 +80,10 @@ def test_dashboard_apptest():
     from streamlit.testing.v1 import AppTest
     app = AppTest.from_function(dashboard_fixture).run()
     assert not app.exception
-    assert any('IDLE' in item.value for item in app.markdown)
+    assert not any('IDLE' in item.value for item in app.markdown)
     assert any('Total available: 0 / 1' in item.value for item in app.caption)
     assert len(app.get('popover')) == 1
-    assert app.get('popover')[0].proto.popover.label == '🔒'
+    assert app.get('popover')[0].proto.popover.label == '🔒 RESERVED: owner@example.com'
 
 
 def reservations_fixture():

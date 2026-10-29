@@ -6,10 +6,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import streamlit as st
 
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE_PATH
-from patroller_webui.reservations import (ReservationClient, ReservationError, make_duration_payload,
+from patroller_webui.reservations import (ReservationError, make_duration_payload,
                                           parse_time, reservation_status, overlaps_days)
 from patroller_webui.owner_suggestions import suggestions
 from patroller_webui.identity import owner_key, owner_label
+from patroller_webui.write_access import capture_url_token, configure_write_access
 
 
 def gpu_label(uuid, devices):
@@ -214,6 +215,7 @@ def confirm_cancellation(client, server_name, record, zone):
 
 
 def run_reservations():
+    capture_url_token()
     st.title('Reservations')
     st.caption('Trusted-lab management: anyone with the write credential can manage bookings for any owner. Occupancy is independent of reservations.')
     patroller = Patroller(sys.argv[1] if len(sys.argv) > 1 else __DEFAULT_CONFIG_PATH)
@@ -231,11 +233,11 @@ def run_reservations():
         st.success(st.session_state.pop('reservation_notice'))
     st.caption(f'Times shown in {zone}.')
     servers = {s['name']: s for s in config['servers']}
+    access_panel = st.container()
     selected = st.selectbox('Server', list(servers))
     server = servers[selected]
-    client = ReservationClient(server, config)
-    if not client.writable:
-        st.info('Read-only: no reservation write credential is configured.')
+    with access_panel:
+        client = configure_write_access(server, config)
     try:
         records = client.list()
     except ReservationError as exc:
@@ -301,6 +303,8 @@ def run_reservations():
                               'Status': reservation_status(r), 'Repeat': repeat_summary(r), 'Note': r.get('note', '')} for r in filtered], use_container_width=True, hide_index=True)
             if not filtered:
                 st.info('No reservations match these filters.')
+    if not client.writable:
+        return
     with st.expander('Add reservation', expanded=not records):
         booking_form(client, devices, config, zone, selected, owner_options=owner_options)
     if filtered:

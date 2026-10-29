@@ -116,6 +116,7 @@ def test_name_edit_and_known_refresh(custom):
 
 def name_list_fixture():
     import streamlit as st
+    st.session_state.setdefault('reservation_browser_token', 'synthetic-browser')
     from unittest.mock import patch
     from webui_reservations import run_reservations
     class Patroller:
@@ -127,13 +128,14 @@ def name_list_fixture():
                           'devs': {'gpu': {'number': 0, 'name': 'GPU'}}}])
     class Client:
         writable = True
+        def verify_write_access(self): return True
         def __init__(self, *args): pass
         def list(self):
             return [{'id': name, 'owner_type': 'name', 'owner_email': '', 'owner_name': name,
                      'gpu_uuids': ['gpu'], 'start_at': '2030-01-01T09:00:00Z', 'end_at': '2030-01-01T10:00:00Z'}
                     for name in ('toolbox-nanoparticles', 'another-container')]
         def cancel(self, record_id): st.session_state['name_cancelled'] = record_id
-    with patch('webui_reservations.Patroller', Patroller), patch('webui_reservations.ReservationClient', Client):
+    with patch('webui_reservations.Patroller', Patroller), patch('patroller_webui.write_access.ReservationClient', Client):
         run_reservations()
 
 
@@ -252,7 +254,7 @@ def shared_claims_fixture():
     def capture(records, config, history_path, users):
         st.session_state['claim_users'] = users
         return []
-    with patch('webui_reservations.Patroller', Patroller), patch('webui_reservations.ReservationClient', Client), patch('webui_reservations.suggestions', capture):
+    with patch('webui_reservations.Patroller', Patroller), patch('patroller_webui.write_access.ReservationClient', Client), patch('webui_reservations.suggestions', capture):
         run_reservations()
 
 

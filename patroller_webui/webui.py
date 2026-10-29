@@ -4,9 +4,11 @@ from webui_dashboard import run_dashboard
 from webui_reservations import run_reservations
 from webui_history import run_history_dashboard, run_history_heatmap
 from webui_statistics import run_statistics, run_user_statistics
+from patroller_webui.write_access import capture_url_token
 
 def run():
     st.set_page_config(layout="wide", page_title="Patroller")
+    capture_url_token()
 
     dashboard = st.Page(run_dashboard, title="Dashboard", url_path="dashboard", icon=":material/shelf_position:", default=True)
     history_dashboard = st.Page(run_history_dashboard, title="History Dashboard", url_path="history_dashboard", icon=":material/history:")

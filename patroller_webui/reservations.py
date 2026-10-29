@@ -32,7 +32,7 @@ class ReservationClient:
     def writable(self):
         return bool(self.token)
 
-    def _request(self, path, method='GET', payload=None):
+    def _request(self, path, method='GET', payload=None, authenticated=False):
         headers = {'Accept': 'application/json'}
         user = self.server.get('http_auth_user', self.config.get('http_auth_user'))
         password = self.server.get('http_auth_pass', self.config.get('http_auth_pass'))
@@ -40,16 +40,19 @@ class ReservationClient:
         if basic:
             encoded = base64.b64encode(f'{user}:{password}'.encode()).decode()
             headers['Authorization'] = f'Basic {encoded}'
-        if method != 'GET':
+        if method != 'GET' or authenticated:
             if not self.token:
                 raise ReservationError('read-only', 'No reservation write credential is configured.')
             headers['X-Patroller-Reservation-Token' if basic else 'Authorization'] = self.token if basic else f'Bearer {self.token}'
-            headers['Content-Type'] = 'application/json'
+            if method != 'GET':
+                headers['Content-Type'] = 'application/json'
         req = urllib.request.Request(self.server['url'].rstrip('/') + path,
                                      data=json.dumps(payload).encode() if payload is not None else None,
                                      headers=headers, method=method)
         try:
             with urllib.request.build_opener(NoRedirect()).open(req, timeout=5) as response:
+                if authenticated and response.status != 200:
+                    raise ReservationError('read-only', 'Write access verification requires HTTP 200.')
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as exc:
             states = {401: ('read-only', 'Authorization failed.'), 403: ('read-only', 'Write access denied.'),
@@ -62,6 +65,12 @@ class ReservationClient:
             raise ReservationError(state, message) from None
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
             raise ReservationError('offline', 'Server unavailable or returned an invalid response.') from None
+
+    def verify_write_access(self):
+        if not self.token:
+            return False
+        result = self._request('/reservation-access', authenticated=True)
+        return isinstance(result, dict) and result.get('writable') is True
 
     def list(self):
         result = self._request('/reservations')

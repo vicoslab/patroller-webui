@@ -39,6 +39,8 @@ def test_table_updates_without_filter_lag_and_refresh_retains_filters():
 
 
 def empty_calendar_fixture():
+    import streamlit as st
+    st.session_state.setdefault('reservation_browser_token', 'synthetic-browser')
     from unittest.mock import patch
     from webui_reservations import run_reservations
 
@@ -49,8 +51,9 @@ def empty_calendar_fixture():
         def __iter__(self):
             return iter([{'name': 'node', 'data': {}, 'devs': {'uuid': {'number': 0, 'name': 'GPU'}}}])
 
-    with patch('webui_reservations.Patroller', Patroller), patch('webui_reservations.ReservationClient') as client:
+    with patch('webui_reservations.Patroller', Patroller), patch('patroller_webui.write_access.ReservationClient') as client:
         client.return_value.writable = True
+        client.return_value.verify_write_access.return_value = True
         client.return_value.list.return_value = []
         run_reservations()
 

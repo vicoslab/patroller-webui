@@ -87,6 +87,8 @@ def test_dashboard_apptest():
 
 
 def reservations_fixture():
+    import streamlit as st
+    st.session_state.setdefault('reservation_browser_token', 'synthetic-browser')
     from unittest.mock import patch
     from webui_reservations import run_reservations
     class FakePatroller:
@@ -97,6 +99,7 @@ def reservations_fixture():
             return iter([{'name': 'node', 'data': {'uuid': {}}, 'devs': {'uuid': {'number': 0, 'name': 'Fixture GPU'}}}])
     class FakeClient:
         writable = True
+        def verify_write_access(self): return True
         def __init__(self, *args): pass
         def list(self):
             return [{'id': 'one', 'gpu_uuids': ['uuid'], 'owner_email': 'a@example.com', 'start_at': '2026-01-01T00:00:00Z', 'end_at': '2026-01-01T01:00:00Z', 'note': ''}]
@@ -109,7 +112,7 @@ def reservations_fixture():
         def cancel(self, record_id):
             import streamlit as st
             st.session_state['cancelled_fixture'] = record_id
-    with patch('webui_reservations.Patroller', FakePatroller), patch('webui_reservations.ReservationClient', FakeClient):
+    with patch('webui_reservations.Patroller', FakePatroller), patch('patroller_webui.write_access.ReservationClient', FakeClient):
         run_reservations()
 
 
@@ -168,7 +171,7 @@ def unavailable_fixture():
         writable = False
         def __init__(self, *args): pass
         def list(self): raise ReservationError('unsupported', 'Reservation endpoint not found.')
-    with patch('webui_reservations.Patroller', FakePatroller), patch('webui_reservations.ReservationClient', FakeClient):
+    with patch('webui_reservations.Patroller', FakePatroller), patch('patroller_webui.write_access.ReservationClient', FakeClient):
         run_reservations()
 
 
@@ -176,7 +179,7 @@ def test_unavailable_apptest():
     from streamlit.testing.v1 import AppTest
     app = AppTest.from_function(unavailable_fixture).run()
     assert not app.exception
-    assert any('Read-only' in x.value for x in app.info)
+    assert any('Read-only' in x.value for x in app.caption)
     assert any('Unsupported' in x.value for x in app.error)
     assert not any('empty' in x.value.lower() for x in app.info)
 
@@ -232,6 +235,8 @@ def test_calendar_day_overlap_boundaries_and_dst():
 
 
 def switching_fixture():
+    import streamlit as st
+    st.session_state.setdefault('reservation_browser_token', 'synthetic-browser')
     from unittest.mock import patch
     from webui_reservations import run_reservations
     class FakePatroller:
@@ -242,13 +247,14 @@ def switching_fixture():
             return iter([{'name': name, 'data': {'uuid': {}}, 'devs': {'uuid': {'number': 0, 'name': 'GPU'}}} for name in ('first', 'second')])
     class FakeClient:
         writable = True
+        def verify_write_access(self): return True
         def __init__(self, server, config): self.server = server
         def list(self):
             return [{'id': id, 'gpu_uuids': ['uuid'], 'owner_email': 'a@example.com', 'start_at': '2026-01-01T00:00:00Z', 'end_at': '2026-01-01T01:00:00Z', 'note': ''} for id in ('one', 'two')]
         def cancel(self, record_id):
             import streamlit as st
             st.session_state['cancelled_switch'] = (self.server['name'], record_id)
-    with patch('webui_reservations.Patroller', FakePatroller), patch('webui_reservations.ReservationClient', FakeClient):
+    with patch('webui_reservations.Patroller', FakePatroller), patch('patroller_webui.write_access.ReservationClient', FakeClient):
         run_reservations()
 
 
@@ -313,6 +319,8 @@ def test_repeat_controls_visible_on_selection():
 
 
 def recurring_fixture():
+    import streamlit as st
+    st.session_state.setdefault('reservation_browser_token', 'synthetic-browser')
     from unittest.mock import patch
     from webui_reservations import run_reservations
     class FakePatroller:
@@ -323,6 +331,7 @@ def recurring_fixture():
             return iter([{'name': 'node', 'data': {'uuid': {}}, 'devs': {'uuid': {'number': 0, 'name': 'GPU'}}}])
     class FakeClient:
         writable = True
+        def verify_write_access(self): return True
         def __init__(self, *args): pass
         def list(self):
             return [{'id': 'series', 'gpu_uuids': ['uuid'], 'owner_email': 'a@example.com',
@@ -339,7 +348,7 @@ def recurring_fixture():
         def cancel(self, id):
             import streamlit as st
             st.session_state['series_cancel'] = id
-    with patch('webui_reservations.Patroller', FakePatroller), patch('webui_reservations.ReservationClient', FakeClient):
+    with patch('webui_reservations.Patroller', FakePatroller), patch('patroller_webui.write_access.ReservationClient', FakeClient):
         run_reservations()
 
 

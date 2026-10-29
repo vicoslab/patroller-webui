@@ -2,12 +2,13 @@
 import base64
 import json
 import math
-import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+from patroller_webui.identity import identity_name, identity_email
 
 
 class ReservationError(Exception):
@@ -91,45 +92,54 @@ def local_to_utc(value, zone):
     return candidates[0]
 
 
-def make_payload(gpus, owner, start, end, note, zone, recurrence=None):
-    owner = owner.strip()
+def make_payload(gpus, owner, start, end, note, zone, recurrence=None, owner_name=None, owner_type=None):
+    identity = _payload_identity(owner, owner_name, owner_type)
     if not gpus or len(set(gpus)) != len(gpus):
         raise ValueError('Select at least one GPU.')
-    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', owner):
-        raise ValueError('Enter a valid owner email.')
     start_utc, end_utc = local_to_utc(start, zone), local_to_utc(end, zone)
     if end_utc <= start_utc:
         raise ValueError('End must be after start.')
-    payload = {'gpu_uuids': gpus, 'owner_email': owner, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
+    payload = {'gpu_uuids': gpus, **identity, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
                'end_at': end_utc.isoformat().replace('+00:00', 'Z'), 'note': note}
     if recurrence is not None:
         payload['recurrence'] = recurrence
     return payload
 
 
-def make_duration_payload(gpus, owner, start, duration, note, zone, recurrence=None, original_duration=None, owner_name=None):
+def make_duration_payload(gpus, owner, start, duration, note, zone, recurrence=None, original_duration=None, owner_name=None, owner_type=None):
     unchanged = (isinstance(original_duration, timedelta) and original_duration > timedelta(0)
                  and duration == original_duration.total_seconds() / 3600)
     if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not (0.25 <= duration <= 8784 or unchanged):
         raise ValueError('Duration must be between 0.25 and 8784 hours.')
     start_utc = local_to_utc(start, zone)
-    owner = owner.strip()
+    identity = _payload_identity(owner, owner_name, owner_type)
     if not gpus or len(set(gpus)) != len(gpus):
         raise ValueError('Select at least one GPU.')
-    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', owner):
-        raise ValueError('Enter a valid owner email.')
     end_utc = start_utc + (original_duration if unchanged else timedelta(hours=duration))
-    payload = {'gpu_uuids': gpus, 'owner_email': owner, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
+    payload = {'gpu_uuids': gpus, **identity, 'start_at': start_utc.isoformat().replace('+00:00', 'Z'),
                'end_at': end_utc.isoformat().replace('+00:00', 'Z'), 'note': note}
     if recurrence is not None:
         payload['recurrence'] = recurrence
+    return payload
+
+
+def _payload_identity(owner, owner_name, owner_type):
+    if owner_type is not None:
+        name = identity_name(owner_name)
+        if owner_type != 'name' or owner != '' or name is None:
+            raise ValueError('Container name identity requires an empty email and a valid container name.')
+        return {'owner_type': 'name', 'owner_email': '', 'owner_name': name}
+    email = identity_email(owner)
+    if not email:
+        raise ValueError('Enter a valid owner email.')
+    result = {'owner_email': email}
     if owner_name is not None:
         if (not isinstance(owner_name, str) or len(owner_name) > 200
                 or any(ord(char) < 32 or ord(char) == 127 for char in owner_name)):
             raise ValueError('Owner name must be plain text, at most 200 characters.')
         if owner_name.strip():
-            payload['owner_name'] = owner_name.strip()
-    return payload
+            result['owner_name'] = owner_name.strip()
+    return result
 
 
 def parse_time(value):

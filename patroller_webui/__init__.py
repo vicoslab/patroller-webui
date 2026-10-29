@@ -13,7 +13,7 @@ def _is_missing_user_value(value):
 def get_user_display_name(user, user_label=None):
     """Return a safe display name for a patroller user payload."""
     if isinstance(user, dict):
-        candidate_keys = [user_label, "name", "username", "user", "login", "email"]
+        candidate_keys = [user_label, "name", "username", "user", "login", "ccc-user.name", "email"]
         for key in candidate_keys:
             if key and key in user and not _is_missing_user_value(user.get(key)):
                 return str(user[key])

@@ -13,6 +13,7 @@ import threading
 import time
 
 from patroller_webui import __DEFAULT_DATABASE_PATH as DEFAULT_HISTORY_PATH
+from patroller_webui.identity import identity_name, identity_email, process_identity, reservation_identity
 
 MAX_CANDIDATES = 500
 MAX_PATHS = 8
@@ -25,8 +26,7 @@ MAX_ROWS = 8192
 MAX_GROUPS = 8
 MAX_NAME = 200
 MAX_LABEL = 512
-_COLUMNS = ('owner_email', 'owner_name', 'email', 'name', 'user')
-_EMAIL = re.compile(r"[^\s<>@\x00-\x20\x7f]+@[^\s<>@\x00-\x20\x7f.]+(?:\.[^\s<>@\x00-\x20\x7f.]+)+\Z")
+_COLUMNS = ('owner_email', 'owner_name', 'email', 'name', 'user', 'ccc-user.name')
 _LABEL = re.compile(r'\s*([^<>]*)\s*<([^<>]+)>\s*\Z')
 _lock = threading.Lock()
 _wake = threading.Event()
@@ -43,13 +43,11 @@ class _Entry:
 
 
 def _email(value):
-    if not isinstance(value, str) or len(value) > MAX_LABEL:
-        return ''
-    value = value.strip().casefold()
-    return value if len(value) <= 254 and _EMAIL.fullmatch(value) else ''
+    return identity_email(value) or ''
 
 
 def _name(value):
+    # Email display metadata need not qualify as a container identity.
     if not isinstance(value, str) or len(value) > MAX_LABEL:
         return ''
     value = value.strip()
@@ -58,25 +56,43 @@ def _name(value):
     return value
 
 
-def _add(result, email, name=''):
+def _add(result, email, name='', owner_type=None):
     email = _email(email)
-    if email and email not in result and len(result) < MAX_CANDIDATES:
-        result[email] = {'email': email, 'name': _name(name)}
+    name = identity_name(name) if owner_type == 'name' else _name(name)
+    if owner_type == 'name':
+        if email or not name:
+            return
+        key = f'name:{name}'
+        if key not in result and len(result) < MAX_CANDIDATES:
+            result[key] = {'email': '', 'name': name, 'owner_type': 'name'}
+    elif email and email not in result and len(result) < MAX_CANDIDATES:
+        result[email] = {'email': email, 'name': name}
     elif email in result and not result[email]['name']:
-        result[email]['name'] = _name(name)
+        result[email]['name'] = name
+
+
+def _add_user(result, user):
+    identity = process_identity(user)
+    if identity:
+        kind, value = identity
+        name = ((_name(user.get('name')) or _name(user.get('ccc-user.name'))) if kind == 'email'
+                else value)
+        _add(result, value if kind == 'email' else '', name, 'name' if kind == 'name' else None)
 
 
 def _history_rows(rows, result):
     for row in rows:
         _add(result, row.get('owner_email'), row.get('owner_name'))
-        _add(result, row.get('email'), row.get('name'))
+        _add_user(result, row)
         user = row.get('user')
         if isinstance(user, str) and len(user) <= MAX_LABEL:
             match = _LABEL.fullmatch(user)
             if match:
                 _add(result, match[2], match[1].strip().strip('"'))
-            else:
+            elif _email(user):
                 _add(result, user)
+            else:
+                _add(result, '', user, 'name')
         if len(result) >= MAX_CANDIDATES:
             break
 
@@ -226,7 +242,7 @@ def _cached_history(path):
         return list(entry.values)
 
 
-def suggestions(records, config, history_path=None):
+def suggestions(records, config, history_path=None, users=None):
     """Return up to 500 normalized email/name choices, without waiting for I/O.
 
     Record names take precedence over config and history names. The explicit
@@ -236,13 +252,18 @@ def suggestions(records, config, history_path=None):
     result = {}
     for row in islice(records or (), MAX_ROWS):
         if isinstance(row, dict):
-            _add(result, row.get('owner_email'), row.get('owner_name'))
-    users = config.get('reservation_users') if isinstance(config, dict) else ()
-    if isinstance(users, (list, tuple)):
-        for user in islice(users, MAX_ROWS):
+            identity = reservation_identity(row)
+            if identity:
+                _add(result, row.get('owner_email'), row.get('owner_name'), row.get('owner_type'))
+    configured = config.get('reservation_users') if isinstance(config, dict) else ()
+    if isinstance(configured, (list, tuple)):
+        for user in islice(configured, MAX_ROWS):
             if isinstance(user, dict):
-                _add(result, user.get('email'), user.get('name'))
+                _add_user(result, user)
+    for user in islice(users or (), MAX_ROWS):
+        if isinstance(user, dict):
+            _add_user(result, user)
     path = DEFAULT_HISTORY_PATH if history_path is None else history_path
     for row in _cached_history(path):
-        _add(result, row.get('email'), row.get('name'))
+        _add(result, row.get('email'), row.get('name'), row.get('owner_type'))
     return list(result.values())

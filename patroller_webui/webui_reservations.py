@@ -9,6 +9,7 @@ from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, __DEFAULT_DATABASE
 from patroller_webui.reservations import (ReservationClient, ReservationError, make_duration_payload,
                                           parse_time, reservation_status, overlaps_days)
 from patroller_webui.owner_suggestions import suggestions
+from patroller_webui.identity import owner_key, owner_label
 
 
 def gpu_label(uuid, devices):
@@ -69,24 +70,36 @@ def booking_form(client, devices, config, zone, server_name, record=None, owner_
     # Only memory/cache lookup here: optional history discovery runs in one daemon.
     if owner_options is None:
         owner_options = suggestions([record] if edit else [], config, history_path='')
-    owners = {item['email']: item.get('name', '') for item in owner_options}
+    owners = {owner_key({'owner_email': item['email'], 'owner_name': item.get('name', ''),
+                         **({'owner_type': 'name'} if item.get('owner_type') == 'name' else {})}): item
+              for item in owner_options}
+    owners.pop('', None)
     existing_owner = (record or {}).get('owner_email', '')
+    existing_key = owner_key(record or {})
     if edit:
         # Always retain this booking even when it lies outside the sampled hints.
-        owners[existing_owner] = record.get('owner_name', '')
+        owners[existing_key] = {'email': existing_owner, 'name': record.get('owner_name', ''),
+                                **({'owner_type': 'name'} if record.get('owner_type') == 'name' else {})}
     previous = st.session_state.get(key('selected-owner'), {})
-    default_owner = st.session_state.get(key('owner-choice'), previous.get('email', existing_owner if edit else '__custom__'))
+    default_owner = st.session_state.get(key('owner-choice'), previous.get('key', existing_key if edit else '__custom__'))
     if default_owner != '__custom__' and default_owner not in owners:
-        owners[default_owner] = previous.get('name', '')
+        owners[default_owner] = previous.get('item', {'email': default_owner, 'name': ''})
+    def choice_label(value):
+        if value == '__custom__':
+            return 'New / custom owner'
+        item = owners[value]
+        if item.get('owner_type') == 'name':
+            return f"Container: {item['name']}"
+        return f"{item['name']} ({item['email']})" if item.get('name') else item['email']
     choices = ['__custom__'] + sorted(owners)
     # Keep the row outside the submit form so Owner/Repeat reveal controls live.
     owner_col, date_col, hour_col, minute_col, duration_col, repeat_col = st.columns([3.2, 1.6, 1, 1, 1.5, 1.9])
     with owner_col:
         owner_choice = st.selectbox('Owner', choices, index=choices.index(default_owner),
                                     key=key('owner-choice'),
-                                    format_func=lambda email: 'New / custom owner' if email == '__custom__' else f'{owners[email]} ({email})' if owners[email] else email,
-                                    help='Known owners are suggestions only. Choose New / custom owner to enter any email and an optional name.')
-        st.session_state[key('selected-owner')] = {'email': owner_choice, 'name': owners.get(owner_choice, '')}
+                                    format_func=choice_label,
+                                    help='Known owners are suggestions only. Choose New / custom owner to enter an email or exact container name.')
+        st.session_state[key('selected-owner')] = {'key': owner_choice, 'item': owners.get(owner_choice, {})}
     with date_col:
         start_date = st.date_input('Start date', value=start.date(), key=key('start-date'))
     with hour_col:
@@ -102,21 +115,36 @@ def booking_form(client, devices, config, zone, server_name, record=None, owner_
         st.session_state[key('custom-email')] = st.session_state[key('owner')]
     if key('owner-name') in st.session_state:
         st.session_state[key('custom-name')] = st.session_state[key('owner-name')]
+    if key('container-name') in st.session_state:
+        st.session_state[key('custom-container-name')] = st.session_state[key('container-name')]
+    if key('identity-mode') in st.session_state:
+        st.session_state[key('custom-identity-mode')] = st.session_state[key('identity-mode')]
+    owner_type = None
     if owner_choice == '__custom__':
-        email_col, name_col = st.columns(2)
-        def changed_email():
-            st.session_state[key('owner-name')] = ''
-            st.session_state[key('custom-name')] = ''
-        with email_col:
-            owner = st.text_input('Owner email', value=st.session_state.get(key('custom-email'), existing_owner),
-                                  key=key('owner'), placeholder='person@example.org', on_change=changed_email,
-                                  help='Required: enter the email used for your CCC account/container. You can enter any valid email.')
-        with name_col:
-            owner_name = st.text_input('Owner name (optional)', value=st.session_state.get(key('custom-name'), (record or {}).get('owner_name', '')),
-                                       key=key('owner-name'), max_chars=200,
-                                       help='Display name only. Ownership and process permissions always use Owner email.')
+        modes = ['Email', 'Container name']
+        default_mode = st.session_state.get(key('custom-identity-mode'), 'Container name' if (record or {}).get('owner_type') == 'name' else 'Email')
+        mode = st.selectbox('Owner identity', modes, index=modes.index(default_mode), key=key('identity-mode'))
+        if mode == 'Container name':
+            owner, owner_type = '', 'name'
+            owner_name = st.text_input('Container name', value=st.session_state.get(key('custom-container-name'), (record or {}).get('owner_name', '') if (record or {}).get('owner_type') == 'name' else ''),
+                                       key=key('container-name'), max_chars=200,
+                                       help='Required: exact ccc-user.name label, case-sensitive. Trusted lab identity, not an authenticated human.')
+        else:
+            email_col, name_col = st.columns(2)
+            def changed_email():
+                st.session_state[key('owner-name')] = ''
+                st.session_state[key('custom-name')] = ''
+            with email_col:
+                owner = st.text_input('Owner email', value=st.session_state.get(key('custom-email'), existing_owner),
+                                      key=key('owner'), placeholder='person@example.org', on_change=changed_email,
+                                      help='Required: enter the email used for your CCC account/container. You can enter any valid email.')
+            with name_col:
+                owner_name = st.text_input('Owner name (optional)', value=st.session_state.get(key('custom-name'), (record or {}).get('owner_name', '') if (record or {}).get('owner_type') != 'name' else ''),
+                                           key=key('owner-name'), max_chars=200,
+                                           help='Display name only. Ownership and process permissions always use Owner email.')
     else:
-        owner, owner_name = owner_choice, owners[owner_choice]
+        item = owners[owner_choice]
+        owner, owner_name, owner_type = item['email'], item.get('name', ''), item.get('owner_type')
     st.caption(f'Times shown in {zone}.')
     until = None
     # Keep the date draft even when Repeat temporarily hides its widget.
@@ -152,7 +180,7 @@ def booking_form(client, devices, config, zone, server_name, record=None, owner_
                 if frequency in ('weekly', 'biweekly'):
                     recurrence['weekdays'] = [start_date.weekday()]
             seconds = (start.second, start.microsecond) if edit and (start_date, hour, minute) == (start.date(), start.hour, start.minute) else (0, 0)
-            payload = make_duration_payload(selected, owner, datetime.combine(start_date, time(hour, minute, *seconds)), duration_value, note, zone, recurrence, original_duration=(parse_time(record['end_at']) - parse_time(record['start_at'])) if edit and duration_value == duration else None, owner_name=owner_name)
+            payload = make_duration_payload(selected, owner, datetime.combine(start_date, time(hour, minute, *seconds)), duration_value, note, zone, recurrence, original_duration=(parse_time(record['end_at']) - parse_time(record['start_at'])) if edit and duration_value == duration else None, owner_name=owner_name, owner_type=owner_type)
             if edit:
                 client.update(record['id'], payload)
             else:
@@ -168,7 +196,7 @@ def booking_form(client, devices, config, zone, server_name, record=None, owner_
 def confirm_cancellation(client, server_name, record, zone):
     """Only the modal's explicit confirmation may cancel the captured booking."""
     scope = json.dumps([server_name, record['id']], ensure_ascii=True)
-    st.write(record['owner_email'])
+    st.write(owner_label(record))
     st.caption(f"Starts {local_datetime(record['start_at'], zone):%Y-%m-%d %H:%M} ({zone})")
     st.write('This will cancel the entire recurring series.' if record.get('recurrence') else 'This will remove this reservation.')
     keep_col, confirm_col = st.columns(2)
@@ -223,7 +251,17 @@ def run_reservations():
     elif not devices:
         st.warning('GPU device information is unavailable.')
     history_path = config.get('reservation_history_path') or (sys.argv[2] if len(sys.argv) > 2 else __DEFAULT_DATABASE_PATH)
-    owner_options = suggestions(records, config, history_path)
+    users = []
+    data = (current or {}).get('data')
+    for info in data.values() if isinstance(data, dict) else ():
+        claim = info.get('claim') if isinstance(info, dict) else None
+        if not isinstance(claim, dict):
+            continue
+        claim_users = claim.get('users')
+        if not isinstance(claim_users, list):
+            claim_users = [claim.get('user')]
+        users.extend(user for user in claim_users if isinstance(user, dict))
+    owner_options = suggestions(records, config, history_path, users)
     filtered = []
     with st.expander('Reservations list', expanded=True):
         if not records:
@@ -239,7 +277,8 @@ def run_reservations():
             with gpu_col:
                 gpu_filter = st.multiselect('Filter GPUs', gpu_options, format_func=lambda x: gpu_label(x, devices))
             with owner_col:
-                owner_filter = st.multiselect('Filter owners', sorted({r['owner_email'] for r in records}))
+                owner_records = {owner_key(r): r for r in records}
+                owner_filter = st.multiselect('Filter owners', sorted(owner_records), format_func=lambda value: owner_label(owner_records[value]))
             with status_col:
                 status_filter = st.multiselect('Filter status', ['Active', 'Upcoming', 'Past'])
             with after_col:
@@ -251,11 +290,11 @@ def run_reservations():
                     st.rerun()
             for r in records:
                 if gpu_filter and not set(gpu_filter).intersection(r['gpu_uuids']): continue
-                if owner_filter and r['owner_email'] not in owner_filter: continue
+                if owner_filter and owner_key(r) not in owner_filter: continue
                 if status_filter and reservation_status(r) not in status_filter: continue
                 if not overlaps_days(r, after, before, zone): continue
                 filtered.append(r)
-            table.dataframe([{'GPUs': ', '.join(gpu_label(g, devices) for g in r['gpu_uuids']), 'Owner email': r['owner_email'],
+            table.dataframe([{'GPUs': ', '.join(gpu_label(g, devices) for g in r['gpu_uuids']), 'Owner': owner_label(r), 'Owner email': r['owner_email'],
                               'Owner name': r.get('owner_name', ''),
                               'Start': local_datetime(r['start_at'], zone).strftime('%Y-%m-%d %H:%M'),
                               'End': local_datetime(r['end_at'], zone).strftime('%Y-%m-%d %H:%M'),
@@ -269,7 +308,7 @@ def run_reservations():
             selection_col, cancel_col = st.columns([5, 1.2], vertical_alignment='bottom')
             with selection_col:
                 chosen = st.selectbox('Reservation to manage', filtered,
-                                      format_func=lambda r: f"{r['owner_email']} — {local_datetime(r['start_at'], zone):%Y-%m-%d %H:%M} — {r['id']}")
+                                      format_func=lambda r: f"{owner_label(r)} — {local_datetime(r['start_at'], zone):%Y-%m-%d %H:%M} — {r['id']}")
             with cancel_col:
                 cancel_scope = json.dumps([selected, chosen['id']], ensure_ascii=True)
                 if st.button('Cancel reservation', key=f'cancel-open:{cancel_scope}', disabled=not client.writable, use_container_width=True):

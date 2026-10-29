@@ -69,7 +69,8 @@ def test_real_user_labels_and_projected_columns(tmp_path, monkeypatch):
             seen.append(columns)
             return self.inner.read_row_group(index, columns=columns, **kwargs)
     monkeypatch.setattr(pq, 'ParquetFile', Spy)
-    assert settled(path) == [{'email': 'a@example.com', 'name': 'Alice'},
+    assert settled(path) == [{'email': '', 'name': 'Alice', 'owner_type': 'name'},
+                             {'email': 'a@example.com', 'name': 'Alice'},
                              {'email': 'b@example.com', 'name': ''}]
     assert seen == [['user']]
 
@@ -148,14 +149,16 @@ def test_bounded_directory_scan(tmp_path, monkeypatch):
     assert len(seen) <= 256
 
 
-def test_first_refresh_and_hung_worker_are_nonblocking(tmp_path, monkeypatch):
+@pytest.mark.parametrize('cached', [[{'email': 'old@example.com', 'name': ''}],
+                                    [{'email': '', 'name': 'cached-container', 'owner_type': 'name'}]])
+def test_first_refresh_and_hung_worker_are_nonblocking(tmp_path, monkeypatch, cached):
     entered, release = threading.Event(), threading.Event()
     calls = []
     def slow(path):
         calls.append(path)
         entered.set()
         release.wait(3)
-        return [{'email': 'old@example.com', 'name': ''}]
+        return cached
     monkeypatch.setattr(owners, '_read_history', slow)
     path = tmp_path / 'data.parquet'
     try:
@@ -181,7 +184,7 @@ def test_first_refresh_and_hung_worker_are_nonblocking(tmp_path, monkeypatch):
         with owners._lock:
             owners._cache[str(path)].updated -= 301
         start = time.monotonic()
-        assert owners.suggestions([], {}, path) == [{'email': 'old@example.com', 'name': ''}]
+        assert owners.suggestions([], {}, path) == cached
         assert time.monotonic() - start < .2
         assert entered.wait(1)
         assert owners._worker is worker
@@ -217,9 +220,10 @@ def test_real_eight_megabyte_column_is_not_decoded(tmp_path, monkeypatch):
     assert settled(path) == []
 
 
-def test_dictionary_expansion_is_rejected_before_decode(tmp_path, monkeypatch):
+@pytest.mark.parametrize('column', ['user', 'name', 'ccc-user.name'])
+def test_dictionary_expansion_is_rejected_before_decode(tmp_path, monkeypatch, column):
     path = tmp_path / 'dictionary.parquet'
-    parquet(path, {'user': ['x' * 16_384] * 1024}, use_dictionary=True)
+    parquet(path, {column: ['x' * 16_384] * 1024}, use_dictionary=True)
     pq = importlib.import_module('pyarrow.parquet')
     original = pq.ParquetFile
     metadata = original(path).metadata.row_group(0)
@@ -274,3 +278,32 @@ def test_reader_exception_is_safe_and_worker_recovers(tmp_path, monkeypatch):
     assert settled(tmp_path / 'broken.parquet') == []
     monkeypatch.setattr(owners, '_read_history', lambda path: [{'email': 'ok@example.com', 'name': ''}])
     assert settled(tmp_path / 'ok.parquet') == [{'email': 'ok@example.com', 'name': ''}]
+
+
+def test_name_suggestions_explicit_records_config_and_live_claims():
+    result = owners.suggestions([
+        {'owner_type': 'name', 'owner_email': '', 'owner_name': ' Shared '},
+        {'owner_email': '', 'owner_name': 'Not explicit'},
+    ], {'reservation_users': [{'email': '', 'name': 'Configured'}]}, '', [
+        {'email': 'N/A', 'ccc-user.name': 'Live'},
+        {'email': 'A@Example.org', 'ccc-user.name': 'Shared'},
+        {'email': '', 'name': 'Unknown'},
+    ])
+    assert result == [{'email': '', 'name': 'Shared', 'owner_type': 'name'},
+                      {'email': '', 'name': 'Configured', 'owner_type': 'name'},
+                      {'email': '', 'name': 'Live', 'owner_type': 'name'},
+                      {'email': 'a@example.org', 'name': 'Shared'}]
+
+
+def test_name_history_columns_and_placeholder_validation(tmp_path):
+    path = tmp_path / 'names.parquet'
+    parquet(path, {'ccc-user.name': ['Container', None, 'Unknown', None, None],
+                   'name': [None, 'Generic', None, 'NULL', 'bad\x7fname'],
+                   'email': ['N/A'] * 5})
+    assert settled(path) == [{'email': '', 'name': 'Container', 'owner_type': 'name'},
+                             {'email': '', 'name': 'Generic', 'owner_type': 'name'}]
+
+
+def test_email_suggestion_display_name_remains_display_only():
+    assert owners.suggestions([{'owner_email': 'person@example.org', 'owner_name': 'Unknown'}], {}, '') == [
+        {'email': 'person@example.org', 'name': 'Unknown'}]

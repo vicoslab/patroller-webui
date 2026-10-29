@@ -5,6 +5,7 @@ import streamlit as st
 from patroller_webui import Patroller, __DEFAULT_CONFIG_PATH, format_user_details, get_user_display_name
 from patroller_webui.reservations import gpu_state, parse_time, reservation_countdown
 from zoneinfo import ZoneInfo
+from patroller_webui.identity import owner_label, identity_email
 
 def to_gigabytes(memory_mib):
     return "{0} GB".format(int(int(memory_mib.split()[0]) / 1024))
@@ -113,9 +114,10 @@ def run_dashboard():
                         if active:
                             owner_email = active.get('owner_email', '')
                             owner = next((u for u in pattroler.cfg.get('reservation_users', [])
-                                          if u.get('email', '').strip().casefold() == owner_email.strip().casefold()),
+                                          if identity_email(owner_email) and identity_email(u.get('email')) == identity_email(owner_email)),
                                          {'email': owner_email})
-                            owner_display = active.get('owner_name') or get_user_display_name(owner)
+                            owner_display = (owner_label(active) if active.get('owner_type') == 'name'
+                                             else active.get('owner_name') or get_user_display_name(owner))
                             label = f'🔒 RESERVED: {owner_display}'
                         else:
                             label = f"🔓 Reservations in {reservation_countdown(gpu_info['next_reservation'])}"
@@ -124,7 +126,7 @@ def run_dashboard():
                             for booking in bookings:
                                 if booking.get('owner_name'):
                                     st.text(booking['owner_name'])
-                                st.write(booking.get('owner_email', ''))
+                                st.write(owner_label(booking))
                                 start = parse_time(booking['start_at'])
                                 duration_hours = (parse_time(booking['end_at']) - start).total_seconds() / 3600
                                 st.write(f"Start: {start.astimezone(ZoneInfo(zone)):%Y-%m-%d %H:%M} ({zone})")
